@@ -3,6 +3,8 @@
 import {
   Area,
   AreaChart,
+  ReferenceDot,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -10,12 +12,32 @@ import {
 } from "recharts";
 import type { ElevPoint } from "@/lib/types";
 
+function elevAtKm(profile: ElevPoint[], km: number): number | null {
+  if (!profile.length) return null;
+  if (km <= profile[0].km) return profile[0].elevM;
+  const last = profile[profile.length - 1];
+  if (km >= last.km) return last.elevM;
+  for (let i = 1; i < profile.length; i++) {
+    const a = profile[i - 1];
+    const b = profile[i];
+    if (km <= b.km) {
+      const t = (km - a.km) / Math.max(b.km - a.km, 1e-6);
+      return a.elevM + t * (b.elevM - a.elevM);
+    }
+  }
+  return last.elevM;
+}
+
 export function ElevationChart({
   profile,
   accent = "#1f6b4a",
+  hoverKm = null,
+  onHoverKm,
 }: {
   profile: ElevPoint[];
   accent?: string;
+  hoverKm?: number | null;
+  onHoverKm?: (km: number | null) => void;
 }) {
   if (!profile.length) {
     return (
@@ -25,10 +47,37 @@ export function ElevationChart({
     );
   }
 
+  const minKm = profile[0].km;
+  const maxKm = profile[profile.length - 1].km;
+  const hoverElev =
+    hoverKm === null || hoverKm === undefined
+      ? null
+      : elevAtKm(profile, hoverKm);
+
+  const setHoverFromPointer = (clientX: number, target: HTMLElement) => {
+    const rect = target.getBoundingClientRect();
+    const padL = 36;
+    const padR = 8;
+    const inner = Math.max(rect.width - padL - padR, 1);
+    const x = Math.max(0, Math.min(inner, clientX - rect.left - padL));
+    const t = x / inner;
+    const km = Math.round((minKm + t * (maxKm - minKm)) * 100) / 100;
+    onHoverKm?.(km);
+  };
+
   return (
-    <div className="h-44 w-full">
+    <div
+      className="h-44 w-full elevation-chart"
+      onPointerMove={(e) => setHoverFromPointer(e.clientX, e.currentTarget)}
+      onMouseMove={(e) => setHoverFromPointer(e.clientX, e.currentTarget)}
+      onPointerLeave={() => onHoverKm?.(null)}
+      onMouseLeave={() => onHoverKm?.(null)}
+    >
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={profile} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+        <AreaChart
+          data={profile}
+          margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+        >
           <defs>
             <linearGradient id="elevFill" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={accent} stopOpacity={0.35} />
@@ -60,16 +109,42 @@ export function ElevationChart({
             formatter={(value) => [`${value} m`, "Elevation"]}
             labelFormatter={(label) => `${label} km`}
           />
+          {hoverKm !== null && hoverKm !== undefined ? (
+            <ReferenceLine
+              x={hoverKm}
+              stroke={accent}
+              strokeDasharray="3 3"
+              strokeOpacity={0.7}
+            />
+          ) : null}
+          {hoverKm !== null &&
+          hoverKm !== undefined &&
+          hoverElev !== null ? (
+            <ReferenceDot
+              x={hoverKm}
+              y={hoverElev}
+              r={4}
+              fill={accent}
+              stroke="#fff"
+              strokeWidth={1.5}
+            />
+          ) : null}
           <Area
             type="monotone"
             dataKey="elevM"
             stroke={accent}
             fill="url(#elevFill)"
             strokeWidth={2}
-            isAnimationActive
+            isAnimationActive={false}
+            activeDot={{ r: 4 }}
           />
         </AreaChart>
       </ResponsiveContainer>
+      {hoverKm !== null && hoverKm !== undefined && hoverElev !== null ? (
+        <p className="elevation-hover-readout" aria-live="polite">
+          {hoverKm.toFixed(1)} km · {Math.round(hoverElev)} m
+        </p>
+      ) : null}
     </div>
   );
 }

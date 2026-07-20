@@ -31,6 +31,8 @@ export function SummaryView({
       : plan.selectedRouteId,
   );
   const [copied, setCopied] = useState(false);
+  const [hoverKm, setHoverKm] = useState<number | null>(null);
+  const [previewRouteId, setPreviewRouteId] = useState<string | null>(null);
 
   const selected = useMemo(() => {
     return (
@@ -153,7 +155,15 @@ export function SummaryView({
           <RouteMap
             routes={plan.routes}
             selectedRouteId={selected.routeId}
-            onSelect={setSelectedId}
+            onSelect={(id) => {
+              setSelectedId(id);
+              setHoverKm(null);
+              setPreviewRouteId(null);
+            }}
+            hoverKm={hoverKm}
+            onHoverKm={setHoverKm}
+            previewRouteId={previewRouteId}
+            onPreviewRoute={setPreviewRouteId}
           />
         </section>
 
@@ -176,7 +186,12 @@ export function SummaryView({
         <div className="plan-grid">
           <div>
             <h2>Elevation</h2>
-            <ElevationChart profile={selected.elevProfile} accent={accent} />
+            <ElevationChart
+              profile={selected.elevProfile}
+              accent={accent}
+              hoverKm={hoverKm}
+              onHoverKm={setHoverKm}
+            />
           </div>
           <div>
             <h2>Training effect</h2>

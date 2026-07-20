@@ -48,6 +48,8 @@ export function PlanPanel({
   const [draftIntensity, setDraftIntensity] = useState(plan.wizard.intensity);
   const [draftTerrain, setDraftTerrain] = useState(plan.wizard.terrainBias);
   const [draftQuiet, setDraftQuiet] = useState(plan.wizard.avoidBusyRoads);
+  const [hoverKm, setHoverKm] = useState<number | null>(null);
+  const [previewRouteId, setPreviewRouteId] = useState<string | null>(null);
 
   const selected = useMemo(() => {
     return (
@@ -89,6 +91,8 @@ export function PlanPanel({
 
   const handleSelect = (routeId: string) => {
     setSelectedId(routeId);
+    setHoverKm(null);
+    setPreviewRouteId(null);
     onSelectRoute?.(routeId);
   };
 
@@ -266,19 +270,36 @@ export function PlanPanel({
         routes={plan.routes}
         selectedRouteId={selected.routeId}
         onSelect={handleSelect}
+        hoverKm={hoverKm}
+        onHoverKm={setHoverKm}
+        previewRouteId={previewRouteId}
+        onPreviewRoute={setPreviewRouteId}
       />
 
       <div className="route-cards" role="list">
         {plan.routes.map((route, index) => {
           const active = route.routeId === selected.routeId;
+          const preview = route.routeId === previewRouteId;
           return (
             <button
               key={route.routeId}
               type="button"
               role="listitem"
-              className={active ? "route-card active" : "route-card"}
+              className={
+                active
+                  ? "route-card active"
+                  : preview
+                    ? "route-card preview"
+                    : "route-card"
+              }
               disabled={refining}
               onClick={() => handleSelect(route.routeId)}
+              onMouseEnter={() =>
+                setPreviewRouteId(
+                  route.routeId === selected.routeId ? null : route.routeId,
+                )
+              }
+              onMouseLeave={() => setPreviewRouteId(null)}
               style={{
                 ["--route-accent" as string]:
                   ROUTE_COLORS[index % ROUTE_COLORS.length],
@@ -319,7 +340,12 @@ export function PlanPanel({
       <div className="plan-grid">
         <div>
           <h3>Elevation</h3>
-          <ElevationChart profile={selected.elevProfile} accent={accent} />
+          <ElevationChart
+            profile={selected.elevProfile}
+            accent={accent}
+            hoverKm={hoverKm}
+            onHoverKm={setHoverKm}
+          />
         </div>
         <div>
           <h3>Training effect</h3>
