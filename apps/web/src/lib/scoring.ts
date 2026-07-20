@@ -39,14 +39,17 @@ export function scoreRoute(input: {
   const climbErr = Math.abs(input.elevGainM - targetClimb) / Math.max(targetClimb, 40);
   const goalFit = clamp01(1 - distErr * 0.7 - climbErr * 0.3);
 
+  // Spread quiet/scenic more so Compare routes radar shapes actually diverge.
   const safetyProxy = clamp01(
-    (input.wizard.avoidBusyRoads ? 0.85 : 0.7) - input.busyPenalty * 0.25,
+    (input.wizard.avoidBusyRoads ? 0.92 : 0.72) - input.busyPenalty * 0.55,
   );
 
+  const climbNorm = clamp01(input.elevGainM / 180);
   const scenicProxy = clamp01(
-    0.55 +
-      (input.elevGainM > 60 ? 0.15 : 0) +
-      (input.wizard.terrainBias === "hilly" && input.elevGainM > 100 ? 0.15 : 0.05),
+    0.38 +
+      climbNorm * 0.4 +
+      (input.wizard.terrainBias === "hilly" ? 0.12 : 0) +
+      (input.wizard.terrainBias === "flat" && input.elevGainM < 45 ? 0.1 : 0),
   );
 
   let weatherFit = 0.75;

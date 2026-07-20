@@ -315,6 +315,7 @@ export function PlanPanel({
         routes={plan.routes}
         selectedRouteId={selected.routeId}
         onSelect={handleSelect}
+        onPreview={setPreviewRouteId}
       />
 
       <div className="route-cards" role="list">
@@ -435,10 +436,11 @@ export function PlanPanel({
           </p>
         )}
         <p className="comparison">
-          Candidates span {plan.comparison.minDistanceKm.toFixed(1)}–
-          {plan.comparison.maxDistanceKm.toFixed(1)} km and{" "}
+          Span {plan.comparison.minDistanceKm.toFixed(1)}–
+          {plan.comparison.maxDistanceKm.toFixed(1)} km ·{" "}
           {Math.round(plan.comparison.minClimbM)}–
-          {Math.round(plan.comparison.maxClimbM)} m climb
+          {Math.round(plan.comparison.maxClimbM)} m climb — use Compare routes
+          above to switch candidates.
         </p>
         {selected.similarRideLabels.length > 0 && (
           <p className="similar">
