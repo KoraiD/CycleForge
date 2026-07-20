@@ -128,6 +128,12 @@ export function RouteMap({
     map.fitBounds(bounds, { padding: 56, duration: 450, maxZoom: 13 });
   }, [routes]);
 
+  // Refit when regenerate swaps geometry (e.g. Amsterdam → Budapest).
+  useEffect(() => {
+    const t = window.setTimeout(() => fitAll(), 50);
+    return () => window.clearTimeout(t);
+  }, [fitAll, selectedRouteId]);
+
   const onMapClick = (e: {
     features?: Array<{ properties?: Record<string, unknown> | null }>;
   }) => {

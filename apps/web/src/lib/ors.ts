@@ -4,6 +4,8 @@ import {
   lineDistanceM,
 } from "./geometry";
 import { buildFallbackRoutes, type RawRoute } from "./fallback-routes";
+import { nameRouteCandidates } from "./name-routes";
+import { placeAwareRouteLabels } from "./route-labels";
 import {
   ROUTE_VARIANTS,
   variantLengthM,
@@ -80,8 +82,14 @@ export async function fetchOrsVariant(
       feature?.properties?.summary?.duration ?? (distanceM / 1000 / 24) * 3600;
     const { gain, loss } = elevGainLoss(coords);
 
+    const labels = placeAwareRouteLabels(wizard);
+    const labelIndex = Math.max(
+      0,
+      ROUTE_VARIANTS.findIndex((v) => v.seed === variant.seed),
+    );
+
     return {
-      label: variant.label,
+      label: labels[labelIndex] ?? variant.label,
       profile: variant.profile,
       geometry,
       distanceM,
@@ -121,5 +129,10 @@ export async function generateRawRoutes(wizard: WizardState): Promise<RawRoute[]
   const settled = await Promise.all(
     ROUTE_VARIANTS.map((variant) => fetchOrsVariant(wizard, variant)),
   );
-  return mergeWithFallbacks(wizard, settled);
+  const merged = mergeWithFallbacks(wizard, settled);
+  const names = await nameRouteCandidates(wizard, merged);
+  return merged.map((route, i) => ({
+    ...route,
+    label: names[i] ?? route.label,
+  }));
 }
