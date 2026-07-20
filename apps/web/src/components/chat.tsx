@@ -14,6 +14,7 @@ import {
   getSessionHistoryAction,
   loadDemoAthleteAction,
   mintChatAccessToken,
+  persistPlanAction,
   selectRouteAction,
   startChatSession,
   updateWizardAction,
@@ -35,6 +36,10 @@ import { PlanPanel, type PlanTweak } from "./plan-panel";
 import { Wizard } from "./wizard";
 
 type Msg = InferChatUIMessage<typeof cycleforgeAgent>;
+
+function planRouteKey(plan: PlanPayload): string {
+  return plan.routes.map((r) => r.routeId).join("|");
+}
 
 type ToolActivity = {
   name: string;
@@ -138,6 +143,13 @@ export function Chat() {
   const [blockBusy, setBlockBusy] = useState(false);
   const gpxInputRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
+  /** Route-id fingerprints already shown — avoids agent plans being shadowed by stale demoPlan. */
+  const seenPlanKeys = useRef(new Set<string>());
+
+  const adoptPlan = (plan: PlanPayload) => {
+    seenPlanKeys.current.add(planRouteKey(plan));
+    setDemoPlan(plan);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -174,6 +186,7 @@ export function Chat() {
         ]);
         if (cancelled) return;
         if (storedPlan) {
+          seenPlanKeys.current.add(planRouteKey(storedPlan));
           setDemoPlan(storedPlan);
           setLocalWizard(storedPlan.wizard);
           setWizardDirty(true);
@@ -202,6 +215,20 @@ export function Chat() {
 
   const agentEnabled = agentConfigured && !error;
   const extracted = useMemo(() => extractFromMessages(messages), [messages]);
+
+  // Adopt new agent tool plans (regenerate/refine) that would otherwise be
+  // shadowed by a stale demoPlan from hydration or a previous local build.
+  useEffect(() => {
+    if (!extracted.plan) return;
+    const key = planRouteKey(extracted.plan);
+    if (seenPlanKeys.current.has(key)) return;
+    seenPlanKeys.current.add(key);
+    setDemoPlan(extracted.plan);
+    setLocalWizard(extracted.plan.wizard);
+    setWizardDirty(true);
+    void persistPlanAction(extracted.plan);
+  }, [extracted.plan]);
+
   const rawPlan = demoPlan ?? extracted.plan;
   const plan =
     rawPlan && history
@@ -248,22 +275,23 @@ export function Chat() {
       const confirmed = { ...wizard, confirmed: true };
       setLocalWizard(confirmed);
       setWizardDirty(true);
-      if (agentEnabled) {
-        const prompt = `Confirm wizard and generate routes. durationMin=${confirmed.durationMin}, intensity=${confirmed.intensity}, terrainBias=${confirmed.terrainBias}, startPreset=${confirmed.startPreset}, startLabel=${confirmed.startLabel}, startLat=${confirmed.startLat}, startLng=${confirmed.startLng}, avoidBusyRoads=${confirmed.avoidBusyRoads}. Goals: ${confirmed.goalsText || "endurance ride"}`;
-        try {
-          await sendMessage({ text: prompt });
-          return;
-        } catch {
-          setAgentConfigured(false);
-        }
-      }
+      // Always rebuild on the Next server so the map updates immediately.
+      // Agent chat (if available) runs in parallel and must not block the UI.
       try {
         const built = await generateDemoPlan(sessionId, confirmed);
-        setDemoPlan(built);
+        adoptPlan(built);
+        setLocalWizard(built.wizard);
       } catch (err) {
         setLocalError(
           err instanceof Error ? err.message : "Could not generate routes.",
         );
+        return;
+      }
+      if (agentEnabled) {
+        const prompt = `Confirm wizard and generate routes. durationMin=${confirmed.durationMin}, intensity=${confirmed.intensity}, terrainBias=${confirmed.terrainBias}, startPreset=${confirmed.startPreset}, startLabel=${confirmed.startLabel}, startLat=${confirmed.startLat}, startLng=${confirmed.startLng}, avoidBusyRoads=${confirmed.avoidBusyRoads}, ftpWatts=${confirmed.ftpWatts}. Goals: ${confirmed.goalsText || "endurance ride"}`;
+        void sendMessage({ text: prompt }).catch(() => {
+          setAgentConfigured(false);
+        });
       }
     });
   };
@@ -301,20 +329,20 @@ export function Chat() {
     setWizardDirty(true);
 
     startTransition(async () => {
-      if (agentEnabled && agentPrompt) {
-        try {
-          await sendMessage({ text: agentPrompt });
-          return;
-        } catch {
-          setAgentConfigured(false);
-        }
-      }
+      // UI-owned regenerate: always rebuild locally first so new routes paint.
+      // Previously agent-only path returned early and stale demoPlan hid tool output.
       try {
         const built = await generateDemoPlan(sessionId, nextWizard);
-        setDemoPlan(built);
+        adoptPlan(built);
         setLocalWizard(built.wizard);
       } catch (err) {
         setLocalError(err instanceof Error ? err.message : "Refine failed.");
+        return;
+      }
+      if (agentEnabled && agentPrompt) {
+        void sendMessage({ text: agentPrompt }).catch(() => {
+          setAgentConfigured(false);
+        });
       }
     });
   };
@@ -371,7 +399,7 @@ export function Chat() {
         setLocalWizard(result.wizard);
         setWizardDirty(true);
         if (demoPlan) {
-          setDemoPlan(
+          adoptPlan(
             attachCoachNote({
               ...demoPlan,
               historyContext: result.history,
@@ -404,7 +432,7 @@ export function Chat() {
         setHistory(result.history);
         if (demoPlan ?? extracted.plan) {
           const base = demoPlan ?? extracted.plan!;
-          setDemoPlan(
+          adoptPlan(
             attachCoachNote({
               ...base,
               historyContext: result.history,
@@ -454,7 +482,7 @@ export function Chat() {
           avoidBusyRoads: true,
           confirmed: true,
         });
-        setDemoPlan(built);
+        adoptPlan(built);
         setLocalWizard(built.wizard);
       } catch (err) {
         console.error("Demo plan generation failed", err);
@@ -640,24 +668,23 @@ export function Chat() {
             setWizardDirty(true);
             setLocalWizard((w) => ({ ...w, goalsText: text }));
             submitText(text);
-            if (!agentEnabled) {
-              startTransition(async () => {
-                try {
-                  const built = await generateDemoPlan(sessionId, {
-                    goalsText: text,
-                    confirmed: true,
-                  });
-                  setDemoPlan(built);
-                  setLocalWizard(built.wizard);
-                } catch (err) {
-                  setLocalError(
-                    err instanceof Error
-                      ? err.message
-                      : "Could not build a local plan.",
-                  );
-                }
-              });
-            }
+            // Always rebuild locally so the visual pane updates; agent is additive.
+            startTransition(async () => {
+              try {
+                const built = await generateDemoPlan(sessionId, {
+                  goalsText: text,
+                  confirmed: true,
+                });
+                adoptPlan(built);
+                setLocalWizard(built.wizard);
+              } catch (err) {
+                setLocalError(
+                  err instanceof Error
+                    ? err.message
+                    : "Could not build a local plan.",
+                );
+              }
+            });
             setInput("");
           }}
         >
