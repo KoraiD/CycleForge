@@ -2137,6 +2137,14 @@ a.ghost {
   letter-spacing: -0.02em;
 }
 
+.route-compare__lede {
+  margin: 0.4rem 0 0;
+  max-width: 36rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
 .route-compare__verdict {
   margin: 0;
   max-width: 22rem;

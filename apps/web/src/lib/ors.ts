@@ -90,6 +90,13 @@ export async function fetchOrsVariant(
       ROUTE_VARIANTS.findIndex((v) => v.seed === variant.seed),
     );
 
+    // Per-variant quiet score — identical busyPenalty made the radar Quiet axis useless.
+    const busyByProfile: Record<string, number> = {
+      "endurance-flat": wizard.avoidBusyRoads ? 0.08 : 0.28,
+      "rolling-endurance": wizard.avoidBusyRoads ? 0.16 : 0.32,
+      "hilly-loop": wizard.avoidBusyRoads ? 0.05 : 0.2,
+    };
+
     return {
       label: labels[labelIndex] ?? variant.label,
       profile: variant.profile,
@@ -99,7 +106,7 @@ export async function fetchOrsVariant(
       elevGainM: gain,
       elevLossM: loss,
       elevProfile: buildElevProfile(coords),
-      busyPenalty: wizard.avoidBusyRoads ? 0.1 : 0.3,
+      busyPenalty: busyByProfile[variant.profile] ?? (wizard.avoidBusyRoads ? 0.12 : 0.28),
       source: "ors",
     };
   } catch (err) {
