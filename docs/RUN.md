@@ -52,10 +52,13 @@ npm run ingest:weather   # Open-Meteo → weather_forecast_grid (Amsterdam tiles
 
 Seed loads `.env.local` automatically and applies:
 
-- Tables: `plan_sessions`, `routes`, `route_scores`, `weather_forecast_grid`
+- Tables: `plan_sessions`, `routes`, `route_scores`, `weather_forecast_grid`, `rider_history_rides`
 - View: `route_scores_ranked` (SQL recomputed totals)
 - ~20 seed rides for “similar past rides”
+- Demo athlete fixture (`demo-ams-rider`, ~3 weeks) into `rider_history_rides`
 - Weather grid ingest (also available as Trigger task `ingest-weather-grid`, schedule every 6h)
+
+In the UI: **Load demo athlete history** (or agent tool `load_demo_athlete`) before generating routes to attach load-aware coaching.
 
 Re-run seed anytime after schema changes.
 

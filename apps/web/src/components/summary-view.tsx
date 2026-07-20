@@ -43,8 +43,18 @@ export function SummaryView({
     if (selected.routeId === plan.selectedRouteId && plan.coachNote) {
       return plan.coachNote;
     }
-    return buildCoachNote({ wizard: plan.wizard, route: selected });
-  }, [plan.coachNote, plan.selectedRouteId, plan.wizard, selected]);
+    return buildCoachNote({
+      wizard: plan.wizard,
+      route: selected,
+      history: plan.historyContext,
+    });
+  }, [
+    plan.coachNote,
+    plan.historyContext,
+    plan.selectedRouteId,
+    plan.wizard,
+    selected,
+  ]);
 
   if (!selected) {
     return (
@@ -146,6 +156,13 @@ export function SummaryView({
             onSelect={setSelectedId}
           />
         </section>
+
+        {plan.historyContext ? (
+          <p className="history-banner" title={plan.historyContext.summaryLine}>
+            <span className="eyebrow">Athlete history</span>
+            {plan.historyContext.summaryLine}
+          </p>
+        ) : null}
 
         {coachNote ? (
           <article className="coach-note" aria-label="Coaching suggestion">

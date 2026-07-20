@@ -488,6 +488,42 @@ body {
 
 .empty-actions {
   margin-top: 0.85rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.empty-actions .ghost {
+  margin-top: 0;
+}
+
+.history-load {
+  margin: 0.5rem 1rem 0;
+  align-self: flex-start;
+}
+
+.history-chip {
+  margin: 0.5rem 1rem 0;
+  padding: 0.45rem 0.7rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--line);
+  background: color-mix(in oklab, var(--panel) 80%, white);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.history-banner {
+  margin: 0;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--line);
+  background: color-mix(in oklab, var(--bg0) 55%, white);
+  font-size: 0.86rem;
+  color: var(--ink);
+  line-height: 1.4;
 }
 
 .status-banner {

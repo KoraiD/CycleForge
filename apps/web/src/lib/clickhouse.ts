@@ -1,6 +1,15 @@
 import { createClient, type ClickHouseClient } from "@clickhouse/client";
+import {
+  buildDemoAthleteRides,
+  DEMO_ATHLETE_ID,
+  summarizeAthleteHistory,
+  summarizeDemoAthlete,
+  type RiderHistoryRide,
+} from "./athlete-history";
 import { attachCoachNote } from "./coach-note";
 import type {
+  HistoryContext,
+  Intensity,
   PlanPayload,
   RouteCandidate,
   WizardState,
@@ -242,6 +251,131 @@ export async function getMemoryPlan(sessionId: string): Promise<PlanPayload | nu
 }
 
 const memoryWeather = new Map<string, WeatherGridRow>();
+const memoryAthleteRides = new Map<string, RiderHistoryRide[]>();
+
+function formatChDateTime(d: Date): string {
+  return d.toISOString().replace("T", " ").replace("Z", "");
+}
+
+export async function upsertRiderHistoryRides(
+  rides: RiderHistoryRide[],
+): Promise<void> {
+  if (!rides.length) return;
+  const byAthlete = new Map<string, RiderHistoryRide[]>();
+  for (const ride of rides) {
+    const list = byAthlete.get(ride.athleteId) ?? [];
+    list.push(ride);
+    byAthlete.set(ride.athleteId, list);
+  }
+  for (const [athleteId, list] of byAthlete) {
+    memoryAthleteRides.set(athleteId, list);
+  }
+
+  const ch = getClient();
+  if (!ch) return;
+
+  try {
+    await ch.insert({
+      table: "rider_history_rides",
+      values: rides.map((r) => ({
+        athlete_id: r.athleteId,
+        ride_id: r.rideId,
+        started_at: formatChDateTime(r.startedAt),
+        label: r.label,
+        distance_m: r.distanceM,
+        duration_s: r.durationS,
+        elev_gain_m: r.elevGainM,
+        tss_est: r.tssEst,
+        intensity: r.intensity,
+        source: r.source,
+      })),
+      format: "JSONEachRow",
+    });
+  } catch (err) {
+    console.warn("ClickHouse upsertRiderHistoryRides failed", err);
+  }
+}
+
+export async function ensureDemoAthleteSeeded(): Promise<HistoryContext> {
+  const rides = buildDemoAthleteRides();
+  await upsertRiderHistoryRides(rides);
+  return summarizeDemoAthlete();
+}
+
+export async function queryRiderHistory(
+  athleteId: string,
+): Promise<RiderHistoryRide[]> {
+  const ch = getClient();
+  if (!ch) {
+    return memoryAthleteRides.get(athleteId) ?? [];
+  }
+
+  try {
+    const result = await ch.query({
+      query: `
+        SELECT
+          athlete_id AS athleteId,
+          ride_id AS rideId,
+          toString(started_at) AS startedAt,
+          label,
+          distance_m AS distanceM,
+          duration_s AS durationS,
+          elev_gain_m AS elevGainM,
+          tss_est AS tssEst,
+          intensity,
+          source
+        FROM rider_history_rides
+        WHERE athlete_id = {athleteId:String}
+        ORDER BY started_at DESC
+      `,
+      query_params: { athleteId },
+      format: "JSONEachRow",
+    });
+    const rows = (await result.json()) as Array<{
+      athleteId: string;
+      rideId: string;
+      startedAt: string;
+      label: string;
+      distanceM: number;
+      durationS: number;
+      elevGainM: number;
+      tssEst: number;
+      intensity: Intensity;
+      source: "fixture" | "upload";
+    }>;
+    return rows.map((r) => ({
+      ...r,
+      startedAt: new Date(r.startedAt.includes("T") ? r.startedAt : `${r.startedAt}Z`),
+    }));
+  } catch (err) {
+    console.warn("ClickHouse queryRiderHistory failed", err);
+    return memoryAthleteRides.get(athleteId) ?? [];
+  }
+}
+
+export async function getHistoryContext(
+  athleteId: string,
+): Promise<HistoryContext | null> {
+  if (athleteId === DEMO_ATHLETE_ID) {
+    const rides = await queryRiderHistory(athleteId);
+    if (rides.length > 0) {
+      return summarizeAthleteHistory(rides, {
+        athleteId: DEMO_ATHLETE_ID,
+        athleteLabel: "Demo AMS rider",
+        source: "fixture",
+      });
+    }
+    return summarizeDemoAthlete();
+  }
+
+  const rides = await queryRiderHistory(athleteId);
+  if (!rides.length) return null;
+  return summarizeAthleteHistory(rides, {
+    athleteId,
+    athleteLabel: athleteId,
+    source: rides[0]?.source ?? "upload",
+  });
+}
 
 export async function upsertWeatherGridRows(
   rows: WeatherGridRow[],
