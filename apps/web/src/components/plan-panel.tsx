@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { buildCoachNote } from "@/lib/coach-note";
 import { ROUTE_COLORS } from "@/lib/constants";
@@ -101,6 +102,16 @@ export function PlanPanel({
           ) : null}
         </div>
         <div className="plan-panel__actions">
+          <Link
+            href={`/summary/${plan.sessionId}?route=${encodeURIComponent(selected.routeId)}`}
+            className="ghost gpx-export"
+            aria-disabled={refining}
+            onClick={(e) => {
+              if (refining) e.preventDefault();
+            }}
+          >
+            Open summary
+          </Link>
           <button
             type="button"
             className="ghost gpx-export"

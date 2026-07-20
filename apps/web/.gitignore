@@ -36,6 +36,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# local plan cache for summary deep-links
+/.data/
+
 # env
 .env
 .env.*

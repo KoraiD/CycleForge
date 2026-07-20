@@ -68,6 +68,7 @@ This document is the working plan for finishing, hardening, demoing, and submitt
 - In-result tweak panel (duration / intensity / terrain / quiet) + Apply & regenerate  
 - Wizard collapses once a plan exists (tweak panel owns refine)  
 - `plan.coachNote` coaching card + Download GPX for selected route  
+- Summary page `/summary/[sessionId]?route=` (print/PDF + copy link)  
 - Local demo mode when Trigger/Google missing  
 - Vitest + ESLint + GitHub Actions CI  
 - Run guide: [`docs/RUN.md`](RUN.md)  
@@ -176,8 +177,8 @@ Status: **done** · **next** · **spike** · **stretch**
 | ID | Task | Status | Pri | Est. | Notes |
 | --- | --- | --- | --- | --- | --- |
 | **J1** | **GPX export** of selected route | **done** | **P0** | — | `routeToGpx` + Download GPX in Plan Panel |
-| **J2** | **Mixed visual–text summary page** | **next** | **P0** | **4–6h** | Shareable/print-friendly: map snapshot, KPIs, coach note, tips, CH similar rides |
-| J3 | Deep-link `?plan=` / session id for summary | next | P1 | 2h | If time |
+| **J2** | **Mixed visual–text summary page** | **done** | **P0** | — | `/summary/[sessionId]` — map, KPIs, coach, elev, tips, similar rides, print |
+| **J3** | Deep-link session + `?route=` for summary | **done** | **P1** | — | Open summary from plan; Copy link; selectRouteAction persists choice |
 
 ### K — UI usability & interactivity (new)
 
@@ -277,13 +278,12 @@ Deadline: **23 July AoE**. Protect P0; cut stretch without guilt.
 
 ### Done recently
 
-F1 logo · D4 map/address start · C6/C7 weather pipeline · **K1/K2** · **H1/H2** · **I1/I2** · **J1** · B2/B6 Trigger fan-out + ingest · A1/A3/A4 polish  
+F1 logo · D4 map/address start · C6/C7 weather pipeline · **K1/K2** · **H1/H2** · **I1/I2** · **J1/J2/J3** · B2/B6 Trigger fan-out + ingest · A1/A3/A4 polish  
 
 ### P0 — ship before video
 
-1. **J2** Summary page (map + coach note + tips)  
-2. **G1→G2** Athlete history spike → one demo import/fixture path  
-3. **B1/B5/E3/E4/E5** Deploy notes, video, public repo, form copy  
+1. **G1→G2** Athlete history spike → one demo import/fixture path  
+2. **B1/B5/E3/E4/E5** Deploy notes, video, public repo, form copy  
 
 ### P1 — if P0 on track
 
@@ -319,7 +319,7 @@ F1 logo · D4 map/address start · C6/C7 weather pipeline · **K1/K2** · **H1/H
 
 - [x] I1/I2 Coach suggestion field + UI card (chat stays short)  
 - [x] J1 GPX export  
-- [ ] J2 Summary page (map + text + coach note)  
+- [x] J2/J3 Summary page + session/`?route=` deep link  
 - [ ] G1/G2 Athlete history spike → fixture or single import  
 - [ ] K8 Chat declutter (if time before video)  
 

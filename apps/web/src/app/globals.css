@@ -752,9 +752,24 @@ body {
 
 .plan-panel__actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.55rem;
   flex-shrink: 0;
+}
+
+.plan-panel__actions .ghost,
+.summary-top__actions .ghost,
+.summary-top__actions .primary {
+  margin-top: 0;
+}
+
+a.primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 
 .gpx-export {
@@ -989,5 +1004,172 @@ body {
   .plan-grid,
   .training-block__meta {
     grid-template-columns: 1fr;
+  }
+}
+
+/* —— Summary page (J2/J3) —— */
+
+.summary-page {
+  min-height: 100vh;
+  padding: 1.25rem 1.25rem 3rem;
+}
+
+.summary-top {
+  max-width: 920px;
+  margin: 0 auto 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.summary-brand {
+  text-decoration: none;
+  color: inherit;
+}
+
+.summary-top__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.summary-sheet {
+  max-width: 920px;
+  margin: 0 auto;
+  display: grid;
+  gap: 1.1rem;
+  padding: 1.35rem 1.4rem 1.75rem;
+  background: color-mix(in oklab, var(--panel) 92%, white);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  box-shadow: var(--shadow);
+  animation: rise 0.5s ease both;
+}
+
+.summary-title {
+  font-family: var(--font-display);
+  font-size: clamp(1.85rem, 3vw, 2.4rem);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  margin: 0;
+  line-height: 1.15;
+}
+
+.summary-lede {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.98rem;
+}
+
+.summary-kpis {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.summary-map-block .route-map {
+  height: min(48vh, 440px);
+}
+
+.summary-sheet h2 {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  margin: 0 0 0.5rem;
+}
+
+.summary-footer {
+  display: grid;
+  gap: 0.35rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.summary-footer a {
+  color: var(--accent);
+}
+
+.summary-session {
+  font-size: 0.8rem;
+}
+
+.summary-missing {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.75rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.summary-missing h1 {
+  font-family: var(--font-display);
+  margin: 0;
+}
+
+.summary-missing p {
+  margin: 0;
+  max-width: 28rem;
+  color: var(--muted);
+}
+
+.summary-missing__id {
+  font-size: 0.85rem;
+}
+
+.print-only {
+  display: none;
+}
+
+a.ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+@media (max-width: 800px) {
+  .summary-kpis {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media print {
+  body {
+    background: white;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block;
+  }
+
+  .summary-page {
+    padding: 0;
+  }
+
+  .summary-sheet {
+    box-shadow: none;
+    border: 0;
+    border-radius: 0;
+    max-width: none;
+    padding: 0;
+  }
+
+  .summary-map-block .route-map {
+    height: 320px;
+    break-inside: avoid;
+  }
+
+  .coach-note,
+  .plan-grid,
+  .kpi-strip {
+    break-inside: avoid;
   }
 }

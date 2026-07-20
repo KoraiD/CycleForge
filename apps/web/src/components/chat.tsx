@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   generateDemoPlan,
   mintChatAccessToken,
+  selectRouteAction,
   startChatSession,
   updateWizardAction,
 } from "@/app/actions";
@@ -198,6 +199,9 @@ export function Chat() {
     if (demoPlan) {
       setDemoPlan(attachCoachNote({ ...demoPlan, selectedRouteId: routeId }));
     }
+    startTransition(async () => {
+      await selectRouteAction(sessionId, routeId);
+    });
     if (agentEnabled) {
       void sendMessage({ text: `Select route ${routeId}` });
     }

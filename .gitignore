@@ -111,6 +111,8 @@ docs/private/
 tmp/
 temp/
 .scratch/
+.data/
+**/.data/
 
 # ----- Misc generated -----
 *.tgz
