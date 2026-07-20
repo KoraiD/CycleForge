@@ -1,6 +1,6 @@
 "use server";
 
-import { auth } from "@trigger.dev/sdk";
+import { auth, runs } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
 import { randomUUID } from "node:crypto";
 import {
@@ -19,6 +19,7 @@ import { attachCoachNote } from "@/lib/coach-note";
 import { parseGpxRide } from "@/lib/parse-gpx";
 import { parseGoalPrompt } from "@/lib/parse-goal";
 import { buildPlan, mergeWizard } from "@/lib/plan-builder";
+import { ensureRuntimeConfigLoaded } from "@/lib/runtime-config";
 import {
   clearSession,
   getPlan,
@@ -28,6 +29,7 @@ import {
   setSessionAthlete,
   setWizard,
 } from "@/lib/session-store";
+import { toTaskWizard } from "@/lib/task-wizard";
 import {
   buildTrainingBlockPlan,
   type TrainingBlockPlan,
@@ -38,6 +40,7 @@ import {
   type PlanPayload,
   type WizardState,
 } from "@/lib/types";
+import { buildLivePlanTask } from "@/trigger/build-live-plan";
 
 const startChatSessionRaw = chat.createStartSessionAction("cycleforge-agent");
 
@@ -65,11 +68,15 @@ export async function mintChatAccessToken(chatId: string) {
   });
 }
 
-/** Local/demo path when Trigger/Google AI are not configured. */
+/**
+ * Build a live plan: prefer Trigger ORS fan-out + score tasks (the real pipeline).
+ * Falls back to in-process ORS only when Trigger is unavailable or fails.
+ */
 export async function generateDemoPlan(
   sessionId: string,
   patch: Partial<WizardState> = {},
 ): Promise<PlanPayload> {
+  ensureRuntimeConfigLoaded();
   const base = getWizard(sessionId) ?? DEFAULT_WIZARD(sessionId);
   const fromText =
     typeof patch.goalsText === "string" && patch.goalsText.trim()
@@ -82,6 +89,30 @@ export async function generateDemoPlan(
     confirmed: true,
   });
   setWizard(wizard);
+
+  if (process.env.TRIGGER_SECRET_KEY) {
+    try {
+      // triggerAndWait is illegal outside a task.run(); trigger + poll instead.
+      const handle = await buildLivePlanTask.trigger({
+        wizard: toTaskWizard(wizard),
+      });
+      const run = await runs.poll(handle, { pollIntervalMs: 900 });
+      if (!run.isSuccess || !run.output) {
+        throw new Error(
+          `build-live-plan ended with status ${run.status ?? "unknown"}`,
+        );
+      }
+      const plan = run.output as PlanPayload;
+      setPlan(plan);
+      return plan;
+    } catch (err) {
+      console.warn(
+        "Trigger live plan failed; falling back to in-process ORS",
+        err,
+      );
+    }
+  }
+
   const plan = await buildPlan(wizard);
   setPlan(plan);
   return plan;
