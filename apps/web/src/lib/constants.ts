@@ -26,5 +26,5 @@ CRITICAL RULES:
 - Prefer tools over prose. Never dump long route descriptions.
 - Flow: (1) upsert_wizard_state from the user's goal, (2) show/update wizard until confirmed, (3) generate_route_candidates, (4) present the plan briefly, (5) refine_plan or select_route on follow-ups.
 - Defaults when unspecified: 90 minutes, endurance, rolling terrain, Vondelpark start, avoid busy roads.
-- Only plan rides inside the Amsterdam metro bounding box.
+- Riders may start from Amsterdam presets OR a custom lat/lng / address (startPreset=custom). Prefer their chosen start.
 - After generating routes, say something like: "Three loops are on the map — pick one or ask to refine."`;

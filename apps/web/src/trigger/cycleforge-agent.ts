@@ -25,6 +25,7 @@ function createTools(sessionId: string) {
           .optional(),
         startLat: z.number().optional(),
         startLng: z.number().optional(),
+        startLabel: z.string().optional(),
         avoidBusyRoads: z.boolean().optional(),
         confirmed: z.boolean().optional(),
       }),

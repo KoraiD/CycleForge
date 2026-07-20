@@ -9,7 +9,7 @@ import {
 import { scoreRoute } from "@/lib/scoring";
 import { buildTips, comparisonFromRoutes } from "@/lib/tips";
 import { estimateTraining } from "@/lib/training";
-import { fetchWeather } from "@/lib/weather";
+import { resolveWeather } from "@/lib/weather";
 import type { RouteCandidate, WizardState } from "@/lib/types";
 import { randomUUID } from "crypto";
 
@@ -22,6 +22,7 @@ const wizardSchema = z.object({
   startPreset: z.enum(["centraal", "vondelpark", "amstel", "custom"]),
   startLat: z.number(),
   startLng: z.number(),
+  startLabel: z.string().optional(),
   avoidBusyRoads: z.boolean(),
   confirmed: z.boolean(),
 });
@@ -49,9 +50,12 @@ export const scoreAndEnrichRoutesTask = schemaTask({
     rawRoutes: z.array(rawRouteSchema),
   }),
   run: async ({ wizard, rawRoutes }) => {
-    const w = wizard as WizardState;
+    const w = {
+      ...wizard,
+      startLabel: wizard.startLabel ?? "",
+    } as WizardState;
     await upsertSession(w, w.goalsText);
-    const weather = await fetchWeather(w.startLat, w.startLng);
+    const weather = await resolveWeather(w.startLat, w.startLng);
 
     const routes: RouteCandidate[] = [];
     for (const raw of rawRoutes) {

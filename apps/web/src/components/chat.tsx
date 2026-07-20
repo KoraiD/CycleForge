@@ -13,8 +13,10 @@ import {
   updateWizardAction,
 } from "@/app/actions";
 import type { cycleforgeAgent } from "@/trigger/cycleforge-agent";
+import { START_PRESETS } from "@/lib/constants";
 import { DEFAULT_WIZARD, type PlanPayload, type WizardState } from "@/lib/types";
-import { PlanPanel } from "./plan-panel";
+import { BrandMark } from "./brand-mark";
+import { PlanPanel, type PlanTweak } from "./plan-panel";
 import { Wizard } from "./wizard";
 
 type Msg = InferChatUIMessage<typeof cycleforgeAgent>;
@@ -153,14 +155,10 @@ export function Chat() {
       const base = !wizardDirty && extracted.wizard ? extracted.wizard : prev;
       const next = { ...base, ...patch };
       if (patch.startPreset && patch.startPreset !== "custom") {
-        const presets = {
-          centraal: { lat: 52.378, lng: 4.8985 },
-          vondelpark: { lat: 52.3577, lng: 4.8686 },
-          amstel: { lat: 52.3462, lng: 4.9179 },
-        } as const;
-        const p = presets[patch.startPreset];
+        const p = START_PRESETS[patch.startPreset];
         next.startLat = p.lat;
         next.startLng = p.lng;
+        next.startLabel = patch.startLabel ?? p.label;
       }
       return next;
     });
@@ -176,7 +174,7 @@ export function Chat() {
       setLocalWizard(confirmed);
       setWizardDirty(true);
       if (agentEnabled) {
-        const prompt = `Confirm wizard and generate routes. durationMin=${confirmed.durationMin}, intensity=${confirmed.intensity}, terrainBias=${confirmed.terrainBias}, startPreset=${confirmed.startPreset}, avoidBusyRoads=${confirmed.avoidBusyRoads}. Goals: ${confirmed.goalsText || "endurance ride near Amsterdam"}`;
+        const prompt = `Confirm wizard and generate routes. durationMin=${confirmed.durationMin}, intensity=${confirmed.intensity}, terrainBias=${confirmed.terrainBias}, startPreset=${confirmed.startPreset}, startLabel=${confirmed.startLabel}, startLat=${confirmed.startLat}, startLng=${confirmed.startLng}, avoidBusyRoads=${confirmed.avoidBusyRoads}. Goals: ${confirmed.goalsText || "endurance ride"}`;
         try {
           await sendMessage({ text: prompt });
           return;
@@ -204,30 +202,19 @@ export function Chat() {
     }
   };
 
-  const onRefine = (kind: "shorter" | "hillier" | "easier") => {
+  const regenerateWithPatch = (
+    patch: Partial<WizardState>,
+    agentPrompt?: string,
+  ) => {
     setLocalError(null);
-    const patch: Partial<WizardState> =
-      kind === "shorter"
-        ? { durationMin: Math.max(30, wizard.durationMin - 20) }
-        : kind === "hillier"
-          ? { terrainBias: "hilly", intensity: "hills" }
-          : { intensity: "easy", terrainBias: "flat" };
-
     const nextWizard = { ...wizard, ...patch, confirmed: true };
     setLocalWizard(nextWizard);
     setWizardDirty(true);
 
     startTransition(async () => {
-      if (agentEnabled) {
+      if (agentEnabled && agentPrompt) {
         try {
-          await sendMessage({
-            text:
-              kind === "shorter"
-                ? "Make it shorter — about 20 minutes less."
-                : kind === "hillier"
-                  ? "Make it hillier — more climbing."
-                  : "Make it easier — flatter and recovery pace.",
-          });
+          await sendMessage({ text: agentPrompt });
           return;
         } catch {
           setAgentConfigured(false);
@@ -238,11 +225,33 @@ export function Chat() {
         setDemoPlan(built);
         setLocalWizard(built.wizard);
       } catch (err) {
-        setLocalError(
-          err instanceof Error ? err.message : "Refine failed.",
-        );
+        setLocalError(err instanceof Error ? err.message : "Refine failed.");
       }
     });
+  };
+
+  const onRefine = (kind: "shorter" | "hillier" | "easier") => {
+    const patch: Partial<WizardState> =
+      kind === "shorter"
+        ? { durationMin: Math.max(30, wizard.durationMin - 20) }
+        : kind === "hillier"
+          ? { terrainBias: "hilly", intensity: "hills" }
+          : { intensity: "easy", terrainBias: "flat" };
+    const prompt =
+      kind === "shorter"
+        ? "Make it shorter — about 20 minutes less."
+        : kind === "hillier"
+          ? "Make it hillier — more climbing."
+          : "Make it easier — flatter and recovery pace.";
+    regenerateWithPatch(patch, prompt);
+  };
+
+  const onApplyTweaks = (tweak: PlanTweak) => {
+    const { preset: _preset, ...patch } = tweak;
+    regenerateWithPatch(
+      patch,
+      `Regenerate with durationMin=${patch.durationMin ?? wizard.durationMin}, intensity=${patch.intensity ?? wizard.intensity}, terrainBias=${patch.terrainBias ?? wizard.terrainBias}, avoidBusyRoads=${patch.avoidBusyRoads ?? wizard.avoidBusyRoads}.`,
+    );
   };
 
   const runQuickDemo = () => {
@@ -294,7 +303,7 @@ export function Chat() {
     <div className="shell">
       <aside className="chat-pane">
         <header className="chat-pane__header">
-          <p className="brand">CycleForge</p>
+          <BrandMark withWordmark size={32} />
           <p className="tagline">Visual training plans — not walls of text</p>
         </header>
 
@@ -305,10 +314,23 @@ export function Chat() {
                 Tell me a training goal or trip idea. I&apos;ll open a wizard,
                 then put routes on a map with elevation and training effect.
               </p>
-              <button type="button" className="ghost" onClick={runQuickDemo}>
-                Try the demo prompt
-              </button>
+              <div className="empty-actions">
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={runQuickDemo}
+                  disabled={busy}
+                >
+                  Try the demo prompt
+                </button>
+              </div>
             </div>
+          )}
+
+          {busy && (
+            <p className="status-banner" role="status">
+              Working — routes and scores update when ready.
+            </p>
           )}
 
           {messages.map((m) => (
@@ -336,6 +358,7 @@ export function Chat() {
               onChange={onWizardChange}
               onConfirm={onConfirmWizard}
               busy={busy}
+              collapsed={Boolean(plan)}
             />
           )}
 
@@ -381,9 +404,14 @@ export function Chat() {
             onChange={(e) => setInput(e.target.value)}
             placeholder="e.g. 90 min endurance near Vondelpark…"
             disabled={busy}
+            aria-label="Training goal or refine request"
           />
-          <button type="submit" className="primary" disabled={busy}>
-            Send
+          <button
+            type="submit"
+            className="primary"
+            disabled={busy || !input.trim()}
+          >
+            {busy ? "…" : "Send"}
           </button>
         </form>
 
@@ -397,16 +425,22 @@ export function Chat() {
 
       <main className="visual-pane">
         {plan ? (
-          <PlanPanel
-            key={`${plan.sessionId}-${plan.routes.map((r) => r.routeId).join("-")}`}
-            plan={plan}
-            onSelectRoute={onSelectRoute}
-            onRefine={onRefine}
-            refining={busy}
-          />
+          <div
+            className={busy ? "plan-refining" : undefined}
+            aria-busy={busy}
+          >
+            <PlanPanel
+              key={`${plan.sessionId}-${plan.routes.map((r) => r.routeId).join("-")}`}
+              plan={plan}
+              onSelectRoute={onSelectRoute}
+              onRefine={onRefine}
+              onApplyTweaks={onApplyTweaks}
+              refining={busy}
+            />
+          </div>
         ) : busy ? (
           <div className="visual-generating" aria-live="polite">
-            <p className="brand">CycleForge</p>
+            <BrandMark withWordmark size={36} />
             <h1>Generating routes…</h1>
             <p>Durable Trigger tasks are fanning out ORS and scoring.</p>
             <ol className="gen-steps">
@@ -419,7 +453,7 @@ export function Chat() {
           </div>
         ) : displayError ? (
           <div className="visual-empty visual-empty--error">
-            <p className="brand">CycleForge</p>
+            <BrandMark withWordmark size={36} />
             <h1>Couldn&apos;t build the plan</h1>
             <p>{displayError}</p>
             <button type="button" className="ghost" onClick={runQuickDemo}>
@@ -428,7 +462,7 @@ export function Chat() {
           </div>
         ) : (
           <div className="visual-empty">
-            <p className="brand">CycleForge</p>
+            <BrandMark withWordmark size={40} />
             <h1>Your ride appears here</h1>
             <p>
               Map, elevation, and training effect stream in as the agent builds

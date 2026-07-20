@@ -47,13 +47,15 @@ Never commit `.env.local`.
 cd apps/web
 npm install
 npm run seed:clickhouse
+npm run ingest:weather   # Open-Meteo → weather_forecast_grid (Amsterdam tiles)
 ```
 
 Seed loads `.env.local` automatically and applies:
 
-- Tables: `plan_sessions`, `routes`, `route_scores`
+- Tables: `plan_sessions`, `routes`, `route_scores`, `weather_forecast_grid`
 - View: `route_scores_ranked` (SQL recomputed totals)
 - ~20 seed rides for “similar past rides”
+- Weather grid ingest (also available as Trigger task `ingest-weather-grid`, schedule every 6h)
 
 Re-run seed anytime after schema changes.
 
@@ -175,6 +177,16 @@ SELECT session_id, status, goals_text, created_at
 FROM plan_sessions
 ORDER BY created_at DESC
 LIMIT 10;
+```
+
+**Nearest weather tile (pipeline join demo):**
+
+```sql
+SELECT tile_id, tile_lat, tile_lng, temp_c, wind_kmh, precip_mm, summary, observed_at
+FROM weather_forecast_grid
+WHERE abs(tile_lat - 52.36) <= 0.15 AND abs(tile_lng - 4.87) <= 0.15
+ORDER BY (abs(tile_lat - 52.36) + abs(tile_lng - 4.87)) ASC, observed_at DESC
+LIMIT 5;
 ```
 
 Weights for `total_sql` match `apps/web/src/lib/scoring.ts`:
