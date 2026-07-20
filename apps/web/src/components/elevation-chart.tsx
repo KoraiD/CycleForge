@@ -85,17 +85,17 @@ export function ElevationChart({
     >
       {effortSegments.length > 0 ? (
         <div className="effort-overlay" aria-hidden>
-          {effortSegments.map((seg) => {
-            const left = ((seg.fromKm - minKm) / Math.max(maxKm - minKm, 0.01)) * 100;
-            const width =
-              ((seg.toKm - seg.fromKm) / Math.max(maxKm - minKm, 0.01)) * 100;
+          {effortSegments.map((seg, i) => {
+            const span = Math.max(maxKm - minKm, 0.01);
+            const left = ((seg.fromKm - minKm) / span) * 100;
+            const width = ((seg.toKm - seg.fromKm) / span) * 100;
             return (
               <span
-                key={`${seg.fromKm}-${seg.toKm}-${seg.zone}`}
+                key={`${seg.fromKm}-${seg.toKm}-${seg.zone}-${i}`}
                 title={`${seg.label} · Z${seg.zone}`}
                 style={{
-                  left: `${Math.max(0, left)}%`,
-                  width: `${Math.max(1.5, width)}%`,
+                  left: `${Math.max(0, Math.min(100, left))}%`,
+                  width: `${Math.max(0, Math.min(100 - left, width))}%`,
                   background: ZONE_FILL[seg.zone],
                 }}
               />
