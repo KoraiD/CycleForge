@@ -316,6 +316,26 @@ body {
 
 .gen-steps li.active::before {
   background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 25%, transparent);
+}
+
+.gen-steps li.done {
+  color: var(--ink);
+}
+
+.gen-steps li.done::before {
+  background: var(--accent);
+}
+
+.gen-current {
+  font-size: 1.05rem !important;
+  color: var(--ink) !important;
+  font-weight: 600;
+}
+
+.gen-note {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
 }
 
 .visual-empty--error {
