@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "dev:trigger": "npx trigger.dev@latest dev",
+    "dev:trigger": "npx trigger.dev@4.5.4 dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --max-warnings 0",
@@ -14,7 +14,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "check": "npm run lint && npm run typecheck && npm run test",
-    "seed:clickhouse": "node scripts/seed-clickhouse.mjs"
+    "seed:clickhouse": "node scripts/seed-clickhouse.mjs",
+    "ingest:weather": "node scripts/ingest-weather-grid.mjs"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.18",

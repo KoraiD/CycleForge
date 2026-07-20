@@ -11,6 +11,8 @@ export type WizardState = {
   startPreset: StartPreset;
   startLat: number;
   startLng: number;
+  /** Human-readable start (address or preset label). */
+  startLabel: string;
   avoidBusyRoads: boolean;
   confirmed: boolean;
 };
@@ -42,6 +44,8 @@ export type WeatherSnapshot = {
   windDirDeg: number;
   precipMm: number;
   summary: string;
+  /** Where the snapshot was resolved from. */
+  source?: "clickhouse" | "open-meteo";
 };
 
 export type RouteScore = {
@@ -93,6 +97,7 @@ export const DEFAULT_WIZARD = (sessionId: string): WizardState => ({
   startPreset: "vondelpark",
   startLat: 52.3577,
   startLng: 4.8686,
+  startLabel: "Vondelpark",
   avoidBusyRoads: true,
   confirmed: false,
 });

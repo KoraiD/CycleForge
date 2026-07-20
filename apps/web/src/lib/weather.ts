@@ -1,57 +1,37 @@
+import { queryNearestWeather, upsertWeatherGridRows } from "./clickhouse";
 import type { WeatherSnapshot } from "./types";
+import { fetchOpenMeteoCurrent, rowToSnapshot } from "./weather-grid";
 
-const WMO: Record<number, string> = {
-  0: "Clear",
-  1: "Mainly clear",
-  2: "Partly cloudy",
-  3: "Overcast",
-  45: "Fog",
-  48: "Fog",
-  51: "Light drizzle",
-  53: "Drizzle",
-  61: "Light rain",
-  63: "Rain",
-  71: "Snow",
-  80: "Showers",
-  95: "Thunderstorm",
-};
+/**
+ * Prefer ClickHouse weather_forecast_grid (pipeline), else live Open-Meteo.
+ * Backfills the tile into CH after a live miss so subsequent plans hit SQL.
+ */
+export async function resolveWeather(
+  lat: number,
+  lng: number,
+): Promise<WeatherSnapshot | null> {
+  const fromCh = await queryNearestWeather(lat, lng);
+  if (fromCh) return rowToSnapshot(fromCh);
 
+  const live = await fetchOpenMeteoCurrent(lat, lng);
+  if (!live) return null;
+
+  void upsertWeatherGridRows([live]).catch(() => undefined);
+
+  return {
+    tempC: live.tempC,
+    windKmh: live.windKmh,
+    windDirDeg: live.windDirDeg,
+    precipMm: live.precipMm,
+    summary: live.summary,
+    source: "open-meteo",
+  };
+}
+
+/** Alias used by plan builders / older call sites. */
 export async function fetchWeather(
   lat: number,
   lng: number,
 ): Promise<WeatherSnapshot | null> {
-  try {
-    const url = new URL("https://api.open-meteo.com/v1/forecast");
-    url.searchParams.set("latitude", String(lat));
-    url.searchParams.set("longitude", String(lng));
-    url.searchParams.set(
-      "current",
-      "temperature_2m,precipitation,wind_speed_10m,wind_direction_10m,weather_code",
-    );
-    url.searchParams.set("wind_speed_unit", "kmh");
-
-    const res = await fetch(url.toString(), { next: { revalidate: 0 } });
-    if (!res.ok) return null;
-    const data = (await res.json()) as {
-      current?: {
-        temperature_2m?: number;
-        precipitation?: number;
-        wind_speed_10m?: number;
-        wind_direction_10m?: number;
-        weather_code?: number;
-      };
-    };
-    const c = data.current;
-    if (!c) return null;
-    const code = c.weather_code ?? 0;
-    return {
-      tempC: c.temperature_2m ?? 12,
-      windKmh: c.wind_speed_10m ?? 10,
-      windDirDeg: c.wind_direction_10m ?? 0,
-      precipMm: c.precipitation ?? 0,
-      summary: WMO[code] ?? "Mixed",
-    };
-  } catch {
-    return null;
-  }
+  return resolveWeather(lat, lng);
 }

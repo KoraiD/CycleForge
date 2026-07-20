@@ -4,6 +4,7 @@ import type {
   RouteCandidate,
   WizardState,
 } from "./types";
+import type { WeatherGridRow } from "./weather-grid";
 
 let client: ClickHouseClient | null = null;
 
@@ -237,4 +238,92 @@ export async function getMemoryPlan(sessionId: string): Promise<PlanPayload | nu
       maxDistanceKm: Math.max(...distances),
     },
   };
+}
+
+const memoryWeather = new Map<string, WeatherGridRow>();
+
+export async function upsertWeatherGridRows(
+  rows: WeatherGridRow[],
+): Promise<void> {
+  if (!rows.length) return;
+  for (const row of rows) {
+    memoryWeather.set(row.tileId, row);
+  }
+
+  const ch = getClient();
+  if (!ch) return;
+
+  try {
+    await ch.insert({
+      table: "weather_forecast_grid",
+      values: rows.map((r) => ({
+        tile_id: r.tileId,
+        tile_lat: r.tileLat,
+        tile_lng: r.tileLng,
+        observed_at: r.observedAt.replace("T", " ").replace("Z", ""),
+        temp_c: r.tempC,
+        wind_kmh: r.windKmh,
+        wind_dir_deg: r.windDirDeg,
+        precip_mm: r.precipMm,
+        weather_code: r.weatherCode,
+        summary: r.summary,
+        source: "open-meteo",
+      })),
+      format: "JSONEachRow",
+    });
+  } catch (err) {
+    console.warn("ClickHouse upsertWeatherGridRows failed", err);
+  }
+}
+
+/** Nearest tile within ~0.15° (~15 km); prefers freshest observed_at. */
+export async function queryNearestWeather(
+  lat: number,
+  lng: number,
+): Promise<WeatherGridRow | null> {
+  const ch = getClient();
+  if (!ch) {
+    let best: WeatherGridRow | null = null;
+    let bestDist = Infinity;
+    for (const row of memoryWeather.values()) {
+      const dist = Math.abs(row.tileLat - lat) + Math.abs(row.tileLng - lng);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = row;
+      }
+    }
+    return bestDist <= 0.15 ? best : null;
+  }
+
+  try {
+    const result = await ch.query({
+      query: `
+        SELECT
+          tile_id AS tileId,
+          tile_lat AS tileLat,
+          tile_lng AS tileLng,
+          toString(observed_at) AS observedAt,
+          temp_c AS tempC,
+          wind_kmh AS windKmh,
+          wind_dir_deg AS windDirDeg,
+          precip_mm AS precipMm,
+          weather_code AS weatherCode,
+          summary
+        FROM weather_forecast_grid
+        WHERE abs(tile_lat - {lat:Float64}) <= 0.15
+          AND abs(tile_lng - {lng:Float64}) <= 0.15
+        ORDER BY
+          (abs(tile_lat - {lat:Float64}) + abs(tile_lng - {lng:Float64})) ASC,
+          observed_at DESC
+        LIMIT 1
+      `,
+      query_params: { lat, lng },
+      format: "JSONEachRow",
+    });
+    const rows = (await result.json()) as WeatherGridRow[];
+    return rows[0] ?? null;
+  } catch (err) {
+    console.warn("ClickHouse queryNearestWeather failed", err);
+    return null;
+  }
 }

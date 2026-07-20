@@ -1,15 +1,16 @@
 import { randomUUID } from "crypto";
 import { findSimilarRides, persistRoutes, upsertSession } from "./clickhouse";
+import { START_PRESETS } from "./constants";
 import { generateRawRoutes } from "./ors";
 import { scoreRoute } from "./scoring";
 import { buildTips, comparisonFromRoutes } from "./tips";
 import { estimateTraining } from "./training";
 import type { PlanPayload, RouteCandidate, WizardState } from "./types";
-import { fetchWeather } from "./weather";
+import { resolveWeather } from "./weather";
 
 export async function buildPlan(wizard: WizardState): Promise<PlanPayload> {
   await upsertSession(wizard, wizard.goalsText);
-  const weather = await fetchWeather(wizard.startLat, wizard.startLng);
+  const weather = await resolveWeather(wizard.startLat, wizard.startLng);
   const rawRoutes = await generateRawRoutes(wizard);
 
   const routes: RouteCandidate[] = [];
@@ -79,14 +80,16 @@ export function mergeWizard(
 ): WizardState {
   const next = { ...current, ...patch, sessionId: current.sessionId };
   if (patch.startPreset && patch.startPreset !== "custom") {
-    const presets = {
-      centraal: { lat: 52.378, lng: 4.8985 },
-      vondelpark: { lat: 52.3577, lng: 4.8686 },
-      amstel: { lat: 52.3462, lng: 4.9179 },
-    } as const;
-    const p = presets[patch.startPreset];
+    const p = START_PRESETS[patch.startPreset];
     next.startLat = p.lat;
     next.startLng = p.lng;
+    next.startLabel = patch.startLabel ?? p.label;
+  }
+  if (next.startLabel === undefined || next.startLabel === "") {
+    next.startLabel =
+      next.startPreset !== "custom"
+        ? START_PRESETS[next.startPreset].label
+        : `Pin ${next.startLat.toFixed(4)}, ${next.startLng.toFixed(4)}`;
   }
   return next;
 }
