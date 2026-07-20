@@ -62,26 +62,41 @@ function Delta({
   );
 }
 
-/** Per-route axes that actually differ between candidates (weather is shared — omit it). */
-function radarProfile(route: RouteCandidate, wizard: WizardState) {
-  const targetDist = targetDistanceM(wizard);
-  const targetClimb = targetElevGainM(wizard);
-  const distance = clamp01(
-    1 - Math.abs(route.distanceM - targetDist) / Math.max(targetDist, 1),
-  );
-  const climb = clamp01(
-    1 - Math.abs(route.elevGainM - targetClimb) / Math.max(targetClimb, 40),
-  );
-  return {
-    Distance: Math.round(distance * 100),
-    Climb: Math.round(climb * 100),
-    Quiet: Math.round(route.score.safetyProxy * 100),
-    Scenic: Math.round(route.score.scenicProxy * 100),
-    Fit: Math.round(route.score.total * 100),
-  };
-}
-
 const AXIS_KEYS = ["Distance", "Climb", "Quiet", "Scenic", "Fit"] as const;
+
+type RadarAxis = (typeof AXIS_KEYS)[number];
+
+/**
+ * Build radar values for every candidate.
+ * Climb/Distance are peer-relative (hilliest / longest among these = 100) so the
+ * Climb spoke never collapses to the center on flat metro rides when "fit to
+ * target climb" would round to 0.
+ */
+function buildRadarProfiles(
+  routes: RouteCandidate[],
+  wizard: WizardState,
+): Map<string, Record<RadarAxis, number>> {
+  const maxDist = Math.max(
+    ...routes.map((r) => r.distanceM),
+    targetDistanceM(wizard) * 0.5,
+    1,
+  );
+  // Prefer peer max so the hilliest candidate always reaches the Climb rim.
+  const peerClimb = Math.max(...routes.map((r) => r.elevGainM), 0);
+  const maxClimb = Math.max(peerClimb, targetElevGainM(wizard) * 0.35, 25);
+
+  const map = new Map<string, Record<RadarAxis, number>>();
+  for (const route of routes) {
+    map.set(route.routeId, {
+      Distance: Math.round((route.distanceM / maxDist) * 100),
+      Climb: Math.round(clamp01(route.elevGainM / maxClimb) * 100),
+      Quiet: Math.round(route.score.safetyProxy * 100),
+      Scenic: Math.round(route.score.scenicProxy * 100),
+      Fit: Math.round(route.score.total * 100),
+    });
+  }
+  return map;
+}
 
 export function RouteRadar({
   routes,
@@ -101,9 +116,7 @@ export function RouteRadar({
     routes.find((r) => r.routeId === selectedRouteId) ?? ranked[0] ?? null;
   const best = ranked[0] ?? null;
 
-  const profiles = new Map(
-    routes.map((route) => [route.routeId, radarProfile(route, wizard)]),
-  );
+  const profiles = buildRadarProfiles(routes, wizard);
 
   const chartData = AXIS_KEYS.map((axis) => {
     const row: Record<string, string | number> = { axis };
@@ -132,9 +145,9 @@ export function RouteRadar({
             {ranked.length} candidates · pick by fit, climb, or quiet roads
           </h3>
           <p className="route-compare__lede">
-            Radar overlays every candidate: Distance &amp; Climb vs your goal,
-            Quiet roads, Scenic climb feel, and overall Fit. Colored outlines =
-            all three routes; filled shape = the one you selected.
+            Radar overlays every candidate. Distance &amp; Climb are relative
+            among these three (longest / hilliest = outer rim). Quiet, Scenic,
+            and Fit come from scoring. Outlines = all routes; fill = selected.
           </p>
         </div>
         {selected && best ? (
@@ -165,18 +178,25 @@ export function RouteRadar({
 
       <div className="route-compare__layout">
         <div className="route-compare__chart">
-          <ResponsiveContainer width="100%" height={240}>
-            <RadarChart data={chartData} cx="50%" cy="50%" outerRadius="70%">
+          <ResponsiveContainer width="100%" height={260}>
+            <RadarChart
+              data={chartData}
+              cx="50%"
+              cy="50%"
+              outerRadius="68%"
+              margin={{ top: 12, right: 28, bottom: 12, left: 28 }}
+            >
               <PolarGrid stroke="var(--line)" />
               <PolarAngleAxis
                 dataKey="axis"
-                tick={{ fill: "var(--muted)", fontSize: 11 }}
+                tick={{ fill: "var(--ink)", fontSize: 12, fontWeight: 600 }}
               />
+              {/* Keep radius ticks off the Climb spoke (was angle=90, hiding the label). */}
               <PolarRadiusAxis
-                angle={90}
+                angle={18}
                 domain={[0, 100]}
-                tickCount={5}
-                tick={{ fill: "var(--muted)", fontSize: 10 }}
+                tickCount={4}
+                tick={{ fill: "var(--muted)", fontSize: 9 }}
               />
               <Tooltip
                 contentStyle={{
