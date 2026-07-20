@@ -649,6 +649,22 @@ Call upsert_wizard_state with these fields, then generate_route_candidates with 
       ? progressChips
       : LOCAL_GEN_STEPS.slice(0, Math.max(1, localStep + 1));
 
+  /** Trigger/useChat can emit duplicate message ids during stream retries. */
+  const chatBubbles = useMemo(() => {
+    const byId = new Map<string, { id: string; role: Msg["role"]; text: string }>();
+    for (const m of messages) {
+      const text = m.parts
+        .filter((part) => part.type === "text" && part.text.trim())
+        .map((part) => (part.type === "text" ? part.text : ""))
+        .join("\n")
+        .trim();
+      if (!text) continue;
+      // Keep the latest payload for a given id.
+      byId.set(m.id, { id: m.id, role: m.role, text });
+    }
+    return [...byId.values()];
+  }, [messages]);
+
   const resetDemo = () => {
     if (
       !window.confirm(
@@ -811,19 +827,13 @@ Call upsert_wizard_state with these fields, then generate_route_candidates with 
             </p>
           ) : null}
 
-          {messages.map((m) => {
-            const textParts = m.parts.filter(
-              (part) => part.type === "text" && part.text.trim(),
-            );
-            if (textParts.length === 0) return null;
-            return (
-              <div key={m.id} className={`bubble bubble--${m.role}`}>
-                {textParts.map((part, i) =>
-                  part.type === "text" ? <p key={i}>{part.text}</p> : null,
-                )}
-              </div>
-            );
-          })}
+          {chatBubbles.map((m) => (
+            <div key={m.id} className={`bubble bubble--${m.role}`}>
+              {m.text.split("\n").map((line, i) => (
+                <p key={`${m.id}-line-${i}`}>{line}</p>
+              ))}
+            </div>
+          ))}
 
           {showWizard && (
             <Wizard
