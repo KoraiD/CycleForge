@@ -98,6 +98,25 @@ export function summarizeAthleteHistory(
     loadHint,
   ].join(" · ");
 
+  const byDay = new Map<string, { tss: number; hours: number; label?: string }>();
+  for (const ride of sorted) {
+    if (ride.startedAt.getTime() < ms28) continue;
+    const date = ride.startedAt.toISOString().slice(0, 10);
+    const prev = byDay.get(date) ?? { tss: 0, hours: 0 };
+    prev.tss += ride.tssEst;
+    prev.hours += ride.durationS / 3600;
+    if (!prev.label) prev.label = ride.label;
+    byDay.set(date, prev);
+  }
+  const dailyLoad = [...byDay.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, v]) => ({
+      date,
+      tss: Math.round(v.tss),
+      hours: Math.round(v.hours * 10) / 10,
+      label: v.label,
+    }));
+
   return {
     athleteId: opts.athleteId,
     athleteLabel: opts.athleteLabel,
@@ -113,6 +132,7 @@ export function summarizeAthleteHistory(
     recentLabels,
     summaryLine,
     loadHint,
+    dailyLoad,
   };
 }
 

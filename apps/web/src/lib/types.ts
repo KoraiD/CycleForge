@@ -44,12 +44,25 @@ export type TrainingEffect = {
   npEst?: number | null;
 };
 
+export type HourlyRideScore = {
+  time: string;
+  label: string;
+  score: number;
+  verdict: "go" | "caution" | "no-go";
+  tempC: number;
+  windKmh: number;
+  precipMm: number;
+  summary: string;
+};
+
 export type LeaveWindowHint = {
   bestStartIso: string;
   bestStartLabel: string;
   score: number;
   reason: string;
   alternatives: Array<{ startIso: string; label: string; score: number }>;
+  /** Scored hourly windows for the commute verdict scrubber. */
+  hours?: HourlyRideScore[];
 };
 
 export type EffortSegment = {
@@ -114,6 +127,8 @@ export type HistoryContext = {
   recentLabels: string[];
   summaryLine: string;
   loadHint: string;
+  /** Per-day TSS for calendar heatmap (last ~28d). */
+  dailyLoad?: Array<{ date: string; tss: number; hours: number; label?: string }>;
 };
 
 export type PlanPayload = {

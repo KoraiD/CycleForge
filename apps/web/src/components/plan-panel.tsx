@@ -12,13 +12,16 @@ import type {
   WizardState,
 } from "@/lib/types";
 import type { TrainingBlockPlan } from "@/lib/training-block-plan";
+import { CommuteVerdict } from "./commute-verdict";
 import { ElevationChart } from "./elevation-chart";
 import { HistoryChart } from "./history-chart";
-import { LeaveWindowCard } from "./leave-window";
 import { RouteMap } from "./route-map";
+import { RouteRadar } from "./route-radar";
 import { ScoreChart } from "./score-chart";
+import { ScoreExplainDrawer } from "./score-explain";
 import { TrainingBlock } from "./training-block";
 import { TrainingBlockPanel } from "./training-block-panel";
+import { TssCalendar } from "./tss-calendar";
 
 const INTENSITIES: Intensity[] = ["easy", "endurance", "tempo", "hills"];
 const TERRAINS: TerrainBias[] = ["flat", "rolling", "hilly"];
@@ -47,6 +50,7 @@ export function PlanPanel({
   trainingBlock = null,
   onCreateTrainingBlock,
   blockBusy,
+  morphFrom = null,
 }: {
   plan: PlanPayload;
   onSelectRoute?: (routeId: string) => void;
@@ -57,6 +61,7 @@ export function PlanPanel({
   trainingBlock?: TrainingBlockPlan | null;
   onCreateTrainingBlock?: () => void;
   blockBusy?: boolean;
+  morphFrom?: GeoJSON.LineString | null;
 }) {
   // Drafts reset when Chat remounts this panel after regenerate (key change).
   const [selectedId, setSelectedId] = useState(plan.selectedRouteId);
@@ -175,13 +180,15 @@ export function PlanPanel({
       {coachNote ? (
         <article className="coach-note" aria-label="Coaching suggestion">
           <p className="eyebrow">Coach note</p>
-          {coachNote.split("\n\n").map((para) => (
-            <p key={para.slice(0, 48)}>{para}</p>
+          {coachNote.split("\n\n").map((para, i) => (
+            <p key={`coach-${i}`}>{para}</p>
           ))}
         </article>
       ) : null}
 
-      {plan.leaveWindow ? <LeaveWindowCard leave={plan.leaveWindow} /> : null}
+      {plan.leaveWindow ? <CommuteVerdict leave={plan.leaveWindow} /> : null}
+
+      <ScoreExplainDrawer route={selected} wizard={plan.wizard} />
 
       {selectingRoute && (
         <div className="route-select-progress" role="status">
@@ -301,6 +308,13 @@ export function PlanPanel({
         onHoverKm={setHoverKm}
         previewRouteId={previewRouteId}
         onPreviewRoute={setPreviewRouteId}
+        morphFrom={morphFrom}
+      />
+
+      <RouteRadar
+        routes={plan.routes}
+        selectedRouteId={selected.routeId}
+        onSelect={handleSelect}
       />
 
       <div className="route-cards" role="list">
@@ -398,6 +412,7 @@ export function PlanPanel({
           <div>
             <h3>Athlete load</h3>
             <HistoryChart history={plan.historyContext} />
+            <TssCalendar history={plan.historyContext} />
           </div>
         ) : null}
       </div>
@@ -433,8 +448,8 @@ export function PlanPanel({
       </div>
 
       <ul className="tips">
-        {selected.tips.map((tip) => (
-          <li key={tip}>{tip}</li>
+        {selected.tips.map((tip, i) => (
+          <li key={`tip-${i}`}>{tip}</li>
         ))}
       </ul>
     </section>

@@ -1,7 +1,7 @@
 {
   "name": "cycleforge-web",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "scripts": {
     "dev": "next dev",
     "dev:trigger": "npx trigger.dev@4.5.4 dev",
@@ -20,7 +20,9 @@
     "deploy:trigger:dry": "npx trigger.dev@4.5.4 deploy --dry-run"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.16",
     "@ai-sdk/google": "^4.0.18",
+    "@ai-sdk/openai": "^4.0.16",
     "@ai-sdk/react": "^4.0.34",
     "@clickhouse/client": "^1.23.1",
     "@trigger.dev/build": "^4.5.4",

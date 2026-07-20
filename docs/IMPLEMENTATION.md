@@ -3,11 +3,14 @@
 **Event:** ClickHouse × Trigger.dev Virtual Summer Hackathon 2026  
 **Build window:** 17 July 09:00 CET → 23 July midnight AoE  
 **Product:** Visual cycling training planner (geo-flexible; Amsterdam remains the default demo)  
-**Repo status:** Private until flip-to-public for submission  
+**Repo status:** Ready to flip public after [`SECURITY.md`](../SECURITY.md) scrub  
 
 This document is the working plan for finishing, hardening, demoing, and submitting CycleForge. It assumes the MVP scaffold already exists under `apps/web`.
 
-**Last plan revision:** 20 July 2026 — K1/K2/H1/H2 shipped + UI smoke findings; F1/D4/C6/C7 included in same PR.
+**Canonical product scope + demo features:** root [`README.md`](../README.md).  
+**Canonical video script + form copy:** [`SUBMIT.md`](SUBMIT.md).
+
+**Last plan revision:** 20 July 2026 — interactive visuals + BYOK Setup shipped; docs/video aligned to MVP.
 
 ---
 
@@ -70,9 +73,11 @@ This document is the working plan for finishing, hardening, demoing, and submitt
 - `plan.coachNote` coaching card + Download GPX for selected route  
 - Summary page `/summary/[sessionId]?route=` (print/PDF + copy link)  
 - Demo athlete fixture → `rider_history_rides` + history-aware coach note  
-- Local demo mode when Trigger/Google missing  
+- Local demo mode when Trigger/AI missing; **/setup** BYOK (Trigger, ClickHouse, Google/OpenAI/Anthropic/local)  
+- Interactive visuals: commute verdict scrubber, route radar, wind segments, TSS calendar, score explain, Trigger fan-out, regen morph  
+- GPX history upload (no live OAuth); Stack page with live CH/Trigger peek  
 - Vitest + ESLint + GitHub Actions CI  
-- Run guide: [`docs/RUN.md`](RUN.md)  
+- Run guide: [`docs/RUN.md`](RUN.md) · Security: [`SECURITY.md`](../SECURITY.md)
 
 ### Known UX gaps (motivate K-series)
 
@@ -370,18 +375,19 @@ Chat text stays short (1–2 sentences). Longer coaching lives on `plan.coachNot
 
 ### 7.4 Security
 
-- Never commit `.env*` (only `.env.example`)  
+- Never commit `.env*` (only `.env.example`) or `.data/`  
 - Scoped Trigger public tokens per `chatId`  
 - Athlete tokens never logged; fixture preferred for public demo video  
-- Repo private until submission hour  
+- BYOK Setup masks secrets in API responses — see [`SECURITY.md`](../SECURITY.md)  
+- Scrub before flipping the GitHub repo public ([`SUBMIT.md`](SUBMIT.md) §E3)  
 
 ---
 
 ## 8. Demo video script (≤ 5 minutes)
 
-**Canonical shot list + narration:** [`SUBMIT.md`](SUBMIT.md) §E4.
+**Canonical shot list + narration:** [`SUBMIT.md`](SUBMIT.md) §E4 (aligned to shipped MVP + hackathon theme).
 
-Summary beats: athlete fixture → demo prompt → interactive plan/coach → GPX/summary → Trigger fan-out tree → ClickHouse weather/ranking/history → end card with public repo URL.
+Summary beats: athlete fixture → map/address start → demo prompt → interactive plan (radar, score explain, leave window, wind) → GPX/summary → Trigger fan-out tree → ClickHouse weather/ranking/history → end card with public repo URL.
 
 ---
 

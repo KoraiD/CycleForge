@@ -1,12 +1,13 @@
 import { chat } from "@trigger.dev/sdk/ai";
-import { google } from "@ai-sdk/google";
 import { streamText, stepCountIs, tool } from "ai";
 import { z } from "zod";
+import { getChatModel } from "@/lib/ai-model";
 import { DEMO_ATHLETE_ID, suggestIntensityFromHistory } from "@/lib/athlete-history";
 import { ensureDemoAthleteSeeded, upsertSession } from "@/lib/clickhouse";
 import { attachCoachNote } from "@/lib/coach-note";
 import { AGENT_SYSTEM_PROMPT } from "@/lib/constants";
 import { mergeWizard } from "@/lib/plan-builder";
+import { ensureRuntimeConfigLoaded } from "@/lib/runtime-config";
 import {
   getPlan,
   getWizard,
@@ -208,14 +209,13 @@ export const cycleforgeAgent = chat
       return createTools(sessionId);
     },
     run: async ({ messages, tools: resolvedTools, signal, clientData }) => {
+      ensureRuntimeConfigLoaded();
       const sessionId = clientData?.sessionId ?? "default";
       getWizard(sessionId);
 
       return streamText({
         ...chat.toStreamTextOptions({ tools: resolvedTools }),
-        model: google(
-          process.env.GOOGLE_GENERATIVE_AI_MODEL || "gemini-flash-latest",
-        ),
+        model: getChatModel(),
         system: AGENT_SYSTEM_PROMPT,
         messages,
         abortSignal: signal,

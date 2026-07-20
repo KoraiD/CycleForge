@@ -8,6 +8,7 @@ import {
   type RiderHistoryRide,
 } from "./athlete-history";
 import { attachCoachNote } from "./coach-note";
+import { ensureRuntimeConfigLoaded } from "./runtime-config";
 import type {
   HistoryContext,
   Intensity,
@@ -18,25 +19,57 @@ import type {
 import type { WeatherGridRow } from "./weather-grid";
 
 let client: ClickHouseClient | null = null;
+let clientKey = "";
 
 function getClient(): ClickHouseClient | null {
+  ensureRuntimeConfigLoaded();
   const url = process.env.CLICKHOUSE_HOST || process.env.CLICKHOUSE_URL;
   const username = process.env.CLICKHOUSE_USER || "default";
   const password = process.env.CLICKHOUSE_PASSWORD || "";
-  if (!url) return null;
+  const database = process.env.CLICKHOUSE_DATABASE || "default";
+  if (!url) {
+    if (client) {
+      void client.close().catch(() => undefined);
+      client = null;
+      clientKey = "";
+    }
+    return null;
+  }
+  const key = `${url}|${username}|${password}|${database}`;
+  if (client && clientKey !== key) {
+    void client.close().catch(() => undefined);
+    client = null;
+    clientKey = "";
+  }
   if (!client) {
     client = createClient({
       url,
       username,
       password,
-      database: process.env.CLICKHOUSE_DATABASE || "default",
+      database,
     });
+    clientKey = key;
   }
   return client;
 }
 
 export function clickhouseConfigured(): boolean {
+  ensureRuntimeConfigLoaded();
   return Boolean(process.env.CLICKHOUSE_HOST || process.env.CLICKHOUSE_URL);
+}
+
+export async function pingClickHouse(): Promise<{ ok: boolean; error?: string }> {
+  const ch = getClient();
+  if (!ch) return { ok: false, error: "ClickHouse URL not configured" };
+  try {
+    await ch.query({ query: "SELECT 1", format: "JSONEachRow" });
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "ClickHouse ping failed",
+    };
+  }
 }
 
 /** In-memory stand-in when ClickHouse env is missing (local UI work). */
