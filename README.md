@@ -41,11 +41,14 @@ Trigger.dev chat.agent  (cycleforge-agent)
          select_route | refine_plan
         │
         ├─► generate-route-candidates
-        │     └─► fetch-ors-route-batch  (parallel ORS / fallback loops)
+        │     └─► fetch-ors-route-batch
+        │           ├─► fetch-ors-route  (Steady canal)
+        │           ├─► fetch-ors-route  (Park & parkway)
+        │           └─► fetch-ors-route  (Waterland)   ← batchTriggerAndWait
         └─► score-and-enrich-routes
               ├─ Open-Meteo weather
               ├─ training + tips engines
-              └─ ClickHouse insert + SQL rank + similar rides
+              └─ ClickHouse insert + route_scores_ranked + similar rides
 ```
 
 ### Trigger.dev (required, deep)
@@ -56,7 +59,8 @@ Trigger.dev chat.agent  (cycleforge-agent)
 | Tool | `upsert_wizard_state` | Merge wizard → memory + `plan_sessions` |
 | Tool | `generate_route_candidates` | Kick durable generation + scoring |
 | Task | `generate-route-candidates` | Orchestrate route fan-out |
-| Task | `fetch-ors-route-batch` | Parallel ORS (or fallback) geometries |
+| Task | `fetch-ors-route-batch` | Orchestrates durable ORS fan-out |
+| Task | `fetch-ors-route` ×3 | Parallel child runs via `batchTriggerAndWait` |
 | Task | `score-and-enrich-routes` | Weather, tips, training, ClickHouse persist/score |
 | Tool | `select_route` / `refine_plan` | Interactive map + constraint deltas |
 
@@ -67,11 +71,11 @@ Tables: `plan_sessions`, `routes`, `route_scores` — see [`clickhouse/schema.sq
 Meaningful queries:
 
 ```sql
--- Rank candidates for a session
-SELECT route_id, total, goal_fit, weather_fit
-FROM route_scores
+-- Rank candidates for a session (SQL recomputes the weighted total)
+SELECT route_id, total_sql, total_stored, goal_fit, weather_fit
+FROM route_scores_ranked
 WHERE session_id = {sessionId:String}
-ORDER BY total DESC;
+ORDER BY total_sql DESC;
 
 -- Similar historical rides
 SELECT label,
@@ -106,6 +110,7 @@ Without ClickHouse env vars, the app uses an in-memory stand-in so local demo st
     ├── src/
     │   ├── app/                 # UI routes + server actions
     │   ├── components/          # Chat, Wizard, Plan Panel, map, charts
+    │   ├── data/golden-routes/  # cached ORS GeoJSON per start preset
     │   ├── lib/                 # scoring, geometry, ORS, CH, tips, tests
     │   └── trigger/             # chat.agent + schemaTasks
     ├── trigger.config.ts
@@ -119,12 +124,14 @@ Without ClickHouse env vars, the app uses an in-memory stand-in so local demo st
 
 - Node.js 22+
 - npm 10+
-- Accounts (for full stack): [Trigger.dev](https://trigger.dev), [ClickHouse Cloud](https://clickhouse.com/cloud), OpenAI
+- Accounts (for full stack): [Trigger.dev](https://trigger.dev), [ClickHouse Cloud](https://clickhouse.com/cloud), [Google AI Studio](https://aistudio.google.com/apikey)
 - Optional: [OpenRouteService](https://openrouteservice.org) API key
 
 ---
 
 ## Quick start
+
+Full walkthrough (tests, UI, ClickHouse queries, Trigger dashboard): **[docs/RUN.md](docs/RUN.md)**.
 
 ```bash
 git clone <your-private-repo-url>
@@ -132,7 +139,7 @@ cd CH-Trigger-Hackathon   # or cycleforge
 
 cd apps/web
 cp .env.example .env.local
-# Fill TRIGGER_SECRET_KEY, TRIGGER_PROJECT_REF, OPENAI_API_KEY
+# Fill TRIGGER_SECRET_KEY, TRIGGER_PROJECT_REF, GOOGLE_GENERATIVE_AI_API_KEY
 # Optional: CLICKHOUSE_*, ORS_API_KEY
 
 npm install
@@ -147,7 +154,7 @@ npm run dev:trigger
 
 Open [http://localhost:3000](http://localhost:3000).
 
-**Local demo mode:** if Trigger/OpenAI are missing, the UI still generates plans via fallback loops + Open-Meteo (see health probe `/api/health`).
+**Local demo mode:** if Trigger/Google AI are missing, the UI still generates plans via golden/fallback geometry + Open-Meteo (see health probe `/api/health`).
 
 ---
 
@@ -159,8 +166,8 @@ Copy from [`apps/web/.env.example`](apps/web/.env.example):
 | --- | --- | --- |
 | `TRIGGER_SECRET_KEY` | Agent chat | From Trigger.dev dashboard |
 | `TRIGGER_PROJECT_REF` | Deploy / `trigger.config.ts` | e.g. `proj_…` |
-| `OPENAI_API_KEY` | Agent model | Default model `gpt-4o-mini` |
-| `OPENAI_MODEL` | Optional | Override model id |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | Agent model | From [Google AI Studio](https://aistudio.google.com/apikey) |
+| `GOOGLE_GENERATIVE_AI_MODEL` | Optional | Default `gemini-flash-latest` |
 | `CLICKHOUSE_URL` | Persist / SQL score | Cloud HTTPS endpoint |
 | `CLICKHOUSE_USER` / `PASSWORD` / `DATABASE` | ClickHouse auth | |
 | `ORS_API_KEY` | Real geometries | Without it → synthetic Amsterdam loops |

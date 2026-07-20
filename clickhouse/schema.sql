@@ -42,3 +42,24 @@ CREATE TABLE IF NOT EXISTS route_scores (
   total Float64
 ) ENGINE = MergeTree
 ORDER BY (session_id, total, route_id);
+
+-- Recompute ranking in SQL (same weights as apps/web/src/lib/scoring.ts).
+-- Demo this in ClickHouse console for the judging video.
+CREATE VIEW IF NOT EXISTS route_scores_ranked AS
+SELECT
+  route_id,
+  session_id,
+  created_at,
+  goal_fit,
+  safety_proxy,
+  scenic_proxy,
+  weather_fit,
+  total AS total_stored,
+  round(
+    goal_fit * 0.45
+    + safety_proxy * 0.2
+    + scenic_proxy * 0.15
+    + weather_fit * 0.2,
+    2
+  ) AS total_sql
+FROM route_scores;

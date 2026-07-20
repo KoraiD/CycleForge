@@ -11,7 +11,8 @@ export const START_PRESETS: Record<
   Exclude<StartPreset, "custom">,
   { label: string; lat: number; lng: number }
 > = {
-  centraal: { label: "Amsterdam Centraal", lat: 52.3791, lng: 4.9003 },
+  // Slightly south of the station so ORS can snap onto the cycling network.
+  centraal: { label: "Amsterdam Centraal", lat: 52.378, lng: 4.8985 },
   vondelpark: { label: "Vondelpark", lat: 52.3577, lng: 4.8686 },
   amstel: { label: "Amstel Station", lat: 52.3462, lng: 4.9179 },
 };
