@@ -1,5 +1,6 @@
 import { schemaTask, logger } from "@trigger.dev/sdk";
 import { z } from "zod";
+import { nameRouteCandidates } from "@/lib/name-routes";
 import { fetchOrsVariant, mergeWithFallbacks } from "@/lib/ors";
 import { ROUTE_VARIANTS } from "@/lib/route-variants";
 import type { WizardState } from "@/lib/types";
@@ -78,10 +79,16 @@ export const fetchOrsRouteBatch = schemaTask({
       return run.output.route;
     });
 
-    const routes = mergeWithFallbacks(wizard as WizardState, partial);
+    const merged = mergeWithFallbacks(wizard as WizardState, partial);
+    const names = await nameRouteCandidates(wizard as WizardState, merged);
+    const routes = merged.map((route, i) => ({
+      ...route,
+      label: names[i] ?? route.label,
+    }));
     logger.info("ORS batch merged", {
       count: routes.length,
       sources: routes.map((r) => r.source),
+      labels: routes.map((r) => r.label),
     });
     return { routes };
   },

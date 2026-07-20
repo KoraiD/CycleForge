@@ -6,7 +6,10 @@ export const metadata: Metadata = {
   description:
     "Chat agent that turns training goals into interactive route maps, elevation profiles, and training effect — powered by Trigger.dev and ClickHouse.",
   icons: {
-    icon: [{ url: "/logo.svg", type: "image/svg+xml" }],
+    icon: [
+      { url: "/logo.svg", type: "image/svg+xml" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
     shortcut: ["/logo.svg"],
     apple: [{ url: "/logo.svg" }],
   },
