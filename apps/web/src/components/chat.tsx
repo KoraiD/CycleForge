@@ -33,6 +33,7 @@ import type { cycleforgeAgent } from "@/trigger/cycleforge-agent";
 import { getOrCreateBrowserSessionId } from "@/lib/browser-session";
 import { attachCoachNote } from "@/lib/coach-note";
 import { START_PRESETS } from "@/lib/constants";
+import { friendlyErrorMessage } from "@/lib/friendly-error";
 import {
   DEFAULT_WIZARD,
   type HistoryContext,
@@ -309,10 +310,14 @@ export function Chat() {
     !wizardDirty && extracted.wizard ? extracted.wizard : localWizard;
 
   const busy = status === "streaming" || status === "submitted" || pending;
+  const agentTransportError = error
+    ? friendlyErrorMessage(
+        error,
+        "Agent transport error — switched to local demo path.",
+      )
+    : null;
   const displayError =
-    localError ??
-    extracted.toolError ??
-    (error ? "Agent transport error — switched to local demo path." : null);
+    localError ?? extracted.toolError ?? agentTransportError;
 
   const submitText = (text: string) => {
     if (!text.trim()) return;
@@ -354,7 +359,7 @@ export function Chat() {
         setLocalWizard(built.wizard);
       } catch (err) {
         setLocalError(
-          err instanceof Error ? err.message : "Could not generate routes.",
+          friendlyErrorMessage(err, "Could not generate routes."),
         );
         return;
       }
@@ -531,15 +536,7 @@ export function Chat() {
     setWizardDirty(true);
     setLocalWizard((w) => ({ ...w, goalsText: prompt }));
     startTransition(async () => {
-      if (agentEnabled) {
-        try {
-          await sendMessage({ text: prompt });
-          return;
-        } catch (err) {
-          console.warn("Agent demo send failed, falling back", err);
-          setAgentConfigured(false);
-        }
-      }
+      // Local plan first so a Trigger/network blip never blocks the UI.
       try {
         const built = await generateDemoPlan(sessionId, {
           goalsText: prompt,
@@ -555,12 +552,18 @@ export function Chat() {
         });
         adoptPlan(built);
         setLocalWizard(built.wizard);
+        if (agentEnabled) {
+          void sendMessage({ text: prompt }).catch(() => {
+            setAgentConfigured(false);
+          });
+        }
       } catch (err) {
         console.error("Demo plan generation failed", err);
         setLocalError(
-          err instanceof Error
-            ? err.message
-            : "Demo plan generation failed. Check ORS / ClickHouse keys.",
+          friendlyErrorMessage(
+            err,
+            "Demo plan generation failed. Check ORS / ClickHouse keys.",
+          ),
         );
       }
     });

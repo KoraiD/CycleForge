@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from "./fetch-timeout";
+
 export type GeocodeHit = {
   label: string;
   lat: number;
@@ -19,7 +21,12 @@ export async function geocodeAddress(
   url.searchParams.set("language", "en");
   url.searchParams.set("format", "json");
 
-  const res = await fetch(url.toString());
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(url.toString(), {}, 8000);
+  } catch {
+    return [];
+  }
   if (!res.ok) return [];
 
   const data = (await res.json()) as {

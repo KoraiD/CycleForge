@@ -4,6 +4,7 @@ import {
   lineDistanceM,
 } from "./geometry";
 import { buildFallbackRoutes, type RawRoute } from "./fallback-routes";
+import { fetchWithTimeout } from "./fetch-timeout";
 import { nameRouteCandidates } from "./name-routes";
 import { placeAwareRouteLabels } from "./route-labels";
 import {
@@ -45,7 +46,7 @@ export async function fetchOrsVariant(
       options.avoid_features = ["highways"];
     }
 
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://api.openrouteservice.org/v2/directions/${cyclingProfile}/geojson`,
       {
         method: "POST",
@@ -60,6 +61,7 @@ export async function fetchOrsVariant(
           options,
         }),
       },
+      12000,
     );
 
     if (!res.ok) {
