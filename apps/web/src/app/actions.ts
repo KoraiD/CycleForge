@@ -95,6 +95,12 @@ export async function getPlanAction(
   return getMemoryPlan(sessionId);
 }
 
+/** Persist a plan payload from the client (e.g. agent tool output) into the Next store. */
+export async function persistPlanAction(plan: PlanPayload): Promise<void> {
+  setWizard(plan.wizard);
+  setPlan(plan);
+}
+
 /** Persist selection so `/summary/[sessionId]` reflects the chosen route. */
 export async function selectRouteAction(
   sessionId: string,
