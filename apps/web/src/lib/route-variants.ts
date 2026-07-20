@@ -9,23 +9,24 @@ export type RouteVariant = {
   seed: number;
 };
 
+/** Placeholder labels — real titles are place-aware / AI-named at generation time. */
 export const ROUTE_VARIANTS: RouteVariant[] = [
   {
-    label: "Steady canal loop",
+    label: "Candidate A",
     profile: "endurance-flat",
     lengthFactor: 0.92,
     points: 3,
     seed: 1,
   },
   {
-    label: "Park & parkway",
+    label: "Candidate B",
     profile: "rolling-endurance",
     lengthFactor: 1.0,
     points: 4,
     seed: 7,
   },
   {
-    label: "Waterland push",
+    label: "Candidate C",
     profile: "hilly-loop",
     lengthFactor: 1.12,
     points: 5,
