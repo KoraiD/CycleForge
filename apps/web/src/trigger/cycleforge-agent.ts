@@ -67,6 +67,7 @@ function createTools(sessionId: string) {
         startLabel: z.string().optional(),
         avoidBusyRoads: z.boolean().optional(),
         confirmed: z.boolean().optional(),
+        ftpWatts: z.number().min(80).max(500).nullable().optional(),
       }),
       execute: async (patch) => {
         const current = getWizard(sessionId);
@@ -75,6 +76,7 @@ function createTools(sessionId: string) {
           intensity: patch.intensity as Intensity | undefined,
           terrainBias: patch.terrainBias as TerrainBias | undefined,
           startPreset: patch.startPreset as StartPreset | undefined,
+          ftpWatts: patch.ftpWatts === undefined ? undefined : patch.ftpWatts,
         });
         if (patch.goalsText !== undefined) next.goalsText = patch.goalsText;
         setWizard(next);
