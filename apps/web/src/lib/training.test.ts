@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { estimateTraining } from "./training";
+import { buildEffortSegments, estimateTraining } from "./training";
+import type { ElevPoint } from "./types";
 
 describe("estimateTraining", () => {
   it("marks easy rides as recovery with lower TSS", () => {
@@ -70,5 +71,24 @@ describe("estimateTraining", () => {
     expect(result.ftpWatts).toBe(250);
     expect(result.npEst).toBeGreaterThan(150);
     expect(result.npEst).toBeLessThan(250);
+  });
+});
+
+describe("buildEffortSegments", () => {
+  it("covers the full profile length (no early truncation)", () => {
+    const profile: ElevPoint[] = [];
+    for (let i = 0; i <= 80; i++) {
+      // Alternating mild climbs/descents so many zone changes would exceed the old 12-cap.
+      const elevM = 50 + (i % 3 === 0 ? 30 : i % 3 === 1 ? 10 : 0);
+      profile.push({ km: i, elevM });
+    }
+    const segments = buildEffortSegments(profile);
+    expect(segments.length).toBeGreaterThan(12);
+    expect(segments[0].fromKm).toBe(0);
+    expect(segments[segments.length - 1].toKm).toBe(80);
+    // Continuous coverage — each segment meets the next.
+    for (let i = 1; i < segments.length; i++) {
+      expect(segments[i].fromKm).toBeCloseTo(segments[i - 1].toKm, 5);
+    }
   });
 });

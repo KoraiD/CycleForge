@@ -114,45 +114,93 @@ export function estimateTraining(input: {
   };
 }
 
-/** Derive climb-effort overlays along the elevation profile. */
+function zoneFromGrade(grade: number): {
+  zone: EffortSegment["zone"];
+  label: string;
+} {
+  if (grade >= 4.5) return { zone: 5, label: "Hard climb" };
+  if (grade >= 2.5) return { zone: 4, label: "Climb" };
+  if (grade >= 1) return { zone: 3, label: "Rollers" };
+  if (grade <= -2) return { zone: 1, label: "Descent" };
+  return { zone: 2, label: "Steady" };
+}
+
+/** Derive climb-effort overlays covering the full elevation profile. */
 export function buildEffortSegments(profile: ElevPoint[]): EffortSegment[] {
   if (profile.length < 2) return [];
-  const segments: EffortSegment[] = [];
+
+  const raw: EffortSegment[] = [];
   let fromKm = profile[0].km;
-  let zone: EffortSegment["zone"] = 2;
-  let label = "Steady";
+  let { zone, label } = zoneFromGrade(0);
 
   for (let i = 1; i < profile.length; i++) {
     const a = profile[i - 1];
     const b = profile[i];
     const dKm = Math.max(b.km - a.km, 0.001);
     const grade = ((b.elevM - a.elevM) / (dKm * 1000)) * 100;
-    let nextZone: EffortSegment["zone"] = 2;
-    let nextLabel = "Steady";
-    if (grade >= 4.5) {
-      nextZone = 5;
-      nextLabel = "Hard climb";
-    } else if (grade >= 2.5) {
-      nextZone = 4;
-      nextLabel = "Climb";
-    } else if (grade >= 1) {
-      nextZone = 3;
-      nextLabel = "Rollers";
-    } else if (grade <= -2) {
-      nextZone = 1;
-      nextLabel = "Descent";
-    }
+    const next = zoneFromGrade(grade);
 
-    if (nextZone !== zone || i === profile.length - 1) {
-      const toKm = nextZone !== zone ? a.km : b.km;
-      if (toKm - fromKm >= 0.3) {
-        segments.push({ fromKm, toKm, zone, label });
+    if (next.zone !== zone) {
+      if (a.km > fromKm + 1e-6) {
+        raw.push({ fromKm, toKm: a.km, zone, label });
       }
       fromKm = a.km;
-      zone = nextZone;
-      label = nextLabel;
+      zone = next.zone;
+      label = next.label;
+    }
+
+    if (i === profile.length - 1 && b.km > fromKm + 1e-6) {
+      raw.push({ fromKm, toKm: b.km, zone, label });
     }
   }
 
-  return segments.slice(0, 12);
+  // Merge adjacent same-zone slices (grade flicker → one band).
+  const merged: EffortSegment[] = [];
+  for (const seg of raw) {
+    const prev = merged[merged.length - 1];
+    if (
+      prev &&
+      prev.zone === seg.zone &&
+      Math.abs(prev.toKm - seg.fromKm) < 0.05
+    ) {
+      prev.toKm = seg.toKm;
+    } else {
+      merged.push({ ...seg });
+    }
+  }
+
+  // Fill any holes so the overlay always spans the whole chart.
+  const startKm = profile[0].km;
+  const endKm = profile[profile.length - 1].km;
+  if (!merged.length) {
+    return [{ fromKm: startKm, toKm: endKm, zone: 2, label: "Steady" }];
+  }
+
+  const filled: EffortSegment[] = [];
+  let cursor = startKm;
+  for (const seg of merged) {
+    if (seg.fromKm > cursor + 0.05) {
+      filled.push({
+        fromKm: cursor,
+        toKm: seg.fromKm,
+        zone: 2,
+        label: "Steady",
+      });
+    }
+    filled.push({
+      ...seg,
+      fromKm: Math.max(seg.fromKm, cursor),
+    });
+    cursor = Math.max(cursor, seg.toKm);
+  }
+  if (cursor < endKm - 0.05) {
+    filled.push({
+      fromKm: cursor,
+      toKm: endKm,
+      zone: 2,
+      label: "Steady",
+    });
+  }
+
+  return filled;
 }
