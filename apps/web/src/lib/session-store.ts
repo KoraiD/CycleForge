@@ -1,7 +1,17 @@
+import { cachePlan, readCachedPlan } from "./plan-cache";
 import { DEFAULT_WIZARD, type PlanPayload, type WizardState } from "./types";
 
-const wizards = new Map<string, WizardState>();
-const plans = new Map<string, PlanPayload>();
+const globalStore = globalThis as typeof globalThis & {
+  __cycleforgeWizards?: Map<string, WizardState>;
+  __cycleforgePlans?: Map<string, PlanPayload>;
+};
+
+const wizards =
+  globalStore.__cycleforgeWizards ??
+  (globalStore.__cycleforgeWizards = new Map<string, WizardState>());
+const plans =
+  globalStore.__cycleforgePlans ??
+  (globalStore.__cycleforgePlans = new Map<string, PlanPayload>());
 
 export function getWizard(sessionId: string): WizardState {
   const existing = wizards.get(sessionId);
@@ -16,9 +26,10 @@ export function setWizard(wizard: WizardState): void {
 }
 
 export function getPlan(sessionId: string): PlanPayload | undefined {
-  return plans.get(sessionId);
+  return plans.get(sessionId) ?? readCachedPlan(sessionId) ?? undefined;
 }
 
 export function setPlan(plan: PlanPayload): void {
   plans.set(plan.sessionId, plan);
+  cachePlan(plan);
 }

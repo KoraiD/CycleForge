@@ -2,8 +2,10 @@
 
 import { auth } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
+import { getMemoryPlan } from "@/lib/clickhouse";
+import { attachCoachNote } from "@/lib/coach-note";
 import { buildPlan, mergeWizard } from "@/lib/plan-builder";
-import { getWizard, setPlan, setWizard } from "@/lib/session-store";
+import { getPlan, getWizard, setPlan, setWizard } from "@/lib/session-store";
 import { DEFAULT_WIZARD, type PlanPayload, type WizardState } from "@/lib/types";
 
 const startChatSessionRaw = chat.createStartSessionAction("cycleforge-agent");
@@ -52,5 +54,27 @@ export async function updateWizardAction(
   const current = getWizard(sessionId);
   const next = mergeWizard(current, patch);
   setWizard(next);
+  return next;
+}
+
+/** Load a plan for the summary page (store/cache, then CH/memory routes). */
+export async function getPlanAction(
+  sessionId: string,
+): Promise<PlanPayload | null> {
+  const fromStore = getPlan(sessionId);
+  if (fromStore) return fromStore;
+  return getMemoryPlan(sessionId);
+}
+
+/** Persist selection so `/summary/[sessionId]` reflects the chosen route. */
+export async function selectRouteAction(
+  sessionId: string,
+  routeId: string,
+): Promise<PlanPayload | null> {
+  const plan = getPlan(sessionId) ?? (await getMemoryPlan(sessionId));
+  if (!plan) return null;
+  if (!plan.routes.some((r) => r.routeId === routeId)) return plan;
+  const next = attachCoachNote({ ...plan, selectedRouteId: routeId });
+  setPlan(next);
   return next;
 }

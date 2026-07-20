@@ -225,7 +225,9 @@ Linting uses `eslint-config-next` (core-web-vitals + TypeScript) with stricter p
 
 **Shipped:** Amsterdam presets + customable agent flow, 3 route candidates, visual plan, refine chips, ORS + golden fallbacks, ClickHouse scoring (`route_scores_ranked`), Trigger agent with parallel ORS fan-out, Google AI Studio.
 
-**Next (see plan):** logo; address/map start (beyond Amsterdam-only); ClickHouse open-data weather pipeline; richer route visuals + tweaks; AI coach note; GPX + summary page; demo athlete-history path (spike TrainingPeaks/Garmin/Strava/Apple Health — fixture/upload likely for hackathon).
+**Shipped recently:** logo, map/address start, weather grid → CH, plan UX tweaks, coach note, GPX, summary page (`/summary/[sessionId]?route=`).
+
+**Next (see plan):** demo athlete-history path (spike TrainingPeaks/Garmin/Strava/Apple Health — fixture/upload likely); submit polish (deploy notes, video, public repo).
 
 **Out for this hackathon:** full multi-platform OAuth product, multi-day tours, turn-by-turn nav, live tracking, power-meter physiology.
 
