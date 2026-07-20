@@ -1,0 +1,79 @@
+import type { ElevPoint } from "./types";
+
+function haversineM(
+  lng1: number,
+  lat1: number,
+  lng2: number,
+  lat2: number,
+): number {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+export function lineDistanceM(coords: number[][]): number {
+  let total = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const [lng1, lat1] = coords[i - 1];
+    const [lng2, lat2] = coords[i];
+    total += haversineM(lng1, lat1, lng2, lat2);
+  }
+  return total;
+}
+
+export function elevGainLoss(coords: number[][]): { gain: number; loss: number } {
+  let gain = 0;
+  let loss = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const prev = coords[i - 1][2] ?? 0;
+    const next = coords[i][2] ?? 0;
+    const d = next - prev;
+    if (d > 0) gain += d;
+    else loss += -d;
+  }
+  return { gain, loss };
+}
+
+export function buildElevProfile(coords: number[][]): ElevPoint[] {
+  if (coords.length === 0) return [];
+  const points: ElevPoint[] = [];
+  let dist = 0;
+  points.push({ km: 0, elevM: coords[0][2] ?? 0 });
+  for (let i = 1; i < coords.length; i++) {
+    const [lng1, lat1] = coords[i - 1];
+    const [lng2, lat2] = coords[i];
+    dist += haversineM(lng1, lat1, lng2, lat2);
+    // downsample ~ every 200m
+    if (i === coords.length - 1 || dist - points[points.length - 1].km * 1000 >= 200) {
+      points.push({ km: Math.round((dist / 1000) * 100) / 100, elevM: coords[i][2] ?? 0 });
+    }
+  }
+  return points;
+}
+
+/** Build a simple loop around a start point (fallback geometry). */
+export function syntheticLoop(
+  startLng: number,
+  startLat: number,
+  radiusKm: number,
+  points = 48,
+  baseElev = 2,
+  climbAmp = 8,
+): GeoJSON.LineString {
+  const coords: number[][] = [];
+  for (let i = 0; i <= points; i++) {
+    const t = (i / points) * Math.PI * 2;
+    const wobble = 1 + 0.12 * Math.sin(3 * t);
+    const dLat = (radiusKm * wobble * Math.cos(t)) / 111;
+    const dLng =
+      (radiusKm * wobble * Math.sin(t)) / (111 * Math.cos((startLat * Math.PI) / 180));
+    const elev = baseElev + climbAmp * (0.5 + 0.5 * Math.sin(2 * t));
+    coords.push([startLng + dLng, startLat + dLat, elev]);
+  }
+  return { type: "LineString", coordinates: coords };
+}

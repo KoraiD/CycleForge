@@ -1,0 +1,50 @@
+{
+  "name": "cycleforge-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "dev:trigger": "npx trigger.dev@latest dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "check": "npm run lint && npm run typecheck && npm run test",
+    "seed:clickhouse": "node scripts/seed-clickhouse.mjs"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^4.0.16",
+    "@ai-sdk/react": "^4.0.34",
+    "@clickhouse/client": "^1.23.1",
+    "@trigger.dev/build": "^4.5.4",
+    "@trigger.dev/sdk": "^4.5.4",
+    "ai": "^7.0.31",
+    "maplibre-gl": "^5.24.0",
+    "next": "16.2.10",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-map-gl": "^8.1.1",
+    "recharts": "^3.9.2",
+    "uuid": "^14.0.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/geojson": "^7946.0.16",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/uuid": "^10.0.0",
+    "@vitest/coverage-v8": "^4.1.10",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.10",
+    "tailwindcss": "^4",
+    "trigger.dev": "^4.5.4",
+    "typescript": "^5",
+    "vitest": "^4.1.10"
+  }
+}
