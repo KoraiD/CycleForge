@@ -164,18 +164,20 @@ export function Chat() {
   const seenPlanKeys = useRef(new Set<string>());
   const [morphFrom, setMorphFrom] = useState<GeoJSON.LineString | null>(null);
   const prevPlanRef = useRef<PlanPayload | null>(null);
-  const [paneWidth, setPaneWidth] = useState(() => {
-    if (typeof window === "undefined") return 400;
+  // Always start at 400 so SSR HTML matches the first client render; restore
+  // the saved width after mount (reading localStorage in useState causes mismatch).
+  const [paneWidth, setPaneWidth] = useState(400);
+  const resizingRef = useRef(false);
+
+  useEffect(() => {
     try {
       const saved = window.localStorage.getItem("cycleforge-pane-width");
       const n = Number(saved);
-      if (Number.isFinite(n) && n >= 280 && n <= 720) return n;
+      if (Number.isFinite(n) && n >= 280 && n <= 720) setPaneWidth(n);
     } catch {
       /* ignore */
     }
-    return 400;
-  });
-  const resizingRef = useRef(false);
+  }, []);
 
   const onResizePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
