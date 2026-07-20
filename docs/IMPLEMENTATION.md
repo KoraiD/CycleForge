@@ -51,7 +51,7 @@ This document is the working plan for finishing, hardening, demoing, and submitt
 - Trigger tasks: `cycleforge-agent`, `generate-route-candidates`, `fetch-ors-route-batch`, `score-and-enrich-routes`  
 - Lib engines: geometry, scoring, training, tips, weather, ORS + fallback  
 - ClickHouse schema + seed SQL; in-memory fallback  
-- Local demo mode when Trigger/OpenAI missing  
+- Local demo mode when Trigger/Google AI missing  
 - Vitest unit tests + strict ESLint  
 
 ---
@@ -113,19 +113,20 @@ Assuming remaining days until **23 July AoE**. Compress earlier if behind.
 
 ### Day N — Stabilize vertical slice (today)
 
-- [ ] Private GitHub repo live; teammates invited  
-- [ ] `.env.local` filled (Trigger, OpenAI, ClickHouse, ORS)  
-- [ ] `npm run check` green  
-- [ ] Manual demo prompt works in **agent mode** (not only local demo)  
-- [ ] ClickHouse seed applied  
+- [x] Private GitHub repo live; teammates invited  
+- [x] `.env.local` filled (Trigger, Google AI Studio, ClickHouse, ORS)  
+- [x] `npm run check` green  
+- [x] Manual demo prompt works in **agent mode** (not only local demo)  
+- [x] ClickHouse seed applied  
 
 ### Day N+1 — Depth for judges
 
-- [ ] B2 parallel ORS child tasks  
-- [ ] C2 SQL scoring story polished  
-- [ ] D2 golden GeoJSON fallbacks committed under `apps/web/src/data/golden-routes/`  
-- [ ] A1 generating state + A3 errors  
-- [ ] Dry-run Trigger dashboard + CH console  
+- [x] B2 parallel ORS child tasks (`fetch-ors-route` ×3 via `batchTriggerAndWait`)  
+- [x] C2 SQL scoring story polished (`route_scores_ranked` view)  
+- [x] D2 golden GeoJSON fallbacks committed under `apps/web/src/data/golden-routes/`  
+- [x] A1 generating state + A3 errors  
+- [x] A4 refine chips on Plan Panel  
+- [ ] Dry-run Trigger dashboard + CH console (capture for video)  
 
 ### Day N+2 — Polish & video
 

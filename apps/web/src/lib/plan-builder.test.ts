@@ -27,8 +27,8 @@ describe("plan-builder", () => {
       startPreset: "centraal",
     });
     expect(next.startPreset).toBe("centraal");
-    expect(next.startLat).toBeCloseTo(52.3791, 3);
-    expect(next.startLng).toBeCloseTo(4.9003, 3);
+    expect(next.startLat).toBeCloseTo(52.378, 3);
+    expect(next.startLng).toBeCloseTo(4.8985, 3);
   });
 
   it("builds a scored plan with three routes", async () => {

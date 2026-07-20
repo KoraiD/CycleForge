@@ -17,10 +17,15 @@ function formatDuration(seconds: number) {
 export function PlanPanel({
   plan,
   onSelectRoute,
+  onRefine,
+  refining,
 }: {
   plan: PlanPayload;
   onSelectRoute?: (routeId: string) => void;
+  onRefine?: (kind: "shorter" | "hillier" | "easier") => void;
+  refining?: boolean;
 }) {
+  // Parent remounts via key when a new plan arrives; local state is for clicks.
   const [selectedId, setSelectedId] = useState(plan.selectedRouteId);
 
   const selected = useMemo(() => {
@@ -53,6 +58,35 @@ export function PlanPanel({
           Fit {Math.round(selected.score.total * 100)}
         </div>
       </header>
+
+      {onRefine && (
+        <div className="refine-chips" aria-label="Refine plan">
+          <button
+            type="button"
+            className="chip"
+            disabled={refining}
+            onClick={() => onRefine("shorter")}
+          >
+            Shorter
+          </button>
+          <button
+            type="button"
+            className="chip"
+            disabled={refining}
+            onClick={() => onRefine("hillier")}
+          >
+            Hillier
+          </button>
+          <button
+            type="button"
+            className="chip"
+            disabled={refining}
+            onClick={() => onRefine("easier")}
+          >
+            Easier
+          </button>
+        </div>
+      )}
 
       <RouteMap
         routes={plan.routes}
