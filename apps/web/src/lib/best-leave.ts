@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "./fetch-timeout";
 import type { LeaveWindowHint } from "./types";
 import { WMO_SUMMARY } from "./weather-grid";
 
@@ -54,7 +55,12 @@ export async function fetchOpenMeteoHourly(
   url.searchParams.set("forecast_days", "2");
   url.searchParams.set("timezone", "auto");
 
-  const res = await fetch(url.toString());
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(url.toString(), {}, 8000);
+  } catch {
+    return [];
+  }
   if (!res.ok) return [];
   const data = (await res.json()) as {
     hourly?: {
