@@ -37,18 +37,18 @@ Browser (Next.js)
         │
         ▼
 Trigger.dev chat.agent  (cycleforge-agent)
-  tools: upsert_wizard_state | generate_route_candidates
+  tools: upsert_wizard_state | load_demo_athlete | generate_route_candidates
          select_route | refine_plan
         │
         ├─► generate-route-candidates
         │     └─► fetch-ors-route-batch
-        │           ├─► fetch-ors-route  (Steady canal)
-        │           ├─► fetch-ors-route  (Park & parkway)
-        │           └─► fetch-ors-route  (Waterland)   ← batchTriggerAndWait
+        │           ├─► fetch-ors-route  (×3 parallel)  ← batchTriggerAndWait
         └─► score-and-enrich-routes
-              ├─ Open-Meteo weather
-              ├─ training + tips engines
-              └─ ClickHouse insert + route_scores_ranked + similar rides
+              ├─ CH weather grid (fallback Open-Meteo)
+              ├─ training + tips + coach note
+              └─ ClickHouse persist + route_scores_ranked + similar rides
+        │
+        └─► ingest-weather-grid  (schedule / CLI → weather_forecast_grid)
 ```
 
 ### Trigger.dev (required, deep)
@@ -57,16 +57,18 @@ Trigger.dev chat.agent  (cycleforge-agent)
 | --- | --- | --- |
 | Chat agent | `cycleforge-agent` | Durable multi-turn session via `chat.agent()` |
 | Tool | `upsert_wizard_state` | Merge wizard → memory + `plan_sessions` |
+| Tool | `load_demo_athlete` | Fixture athlete → `rider_history_rides` |
 | Tool | `generate_route_candidates` | Kick durable generation + scoring |
 | Task | `generate-route-candidates` | Orchestrate route fan-out |
 | Task | `fetch-ors-route-batch` | Orchestrates durable ORS fan-out |
 | Task | `fetch-ors-route` ×3 | Parallel child runs via `batchTriggerAndWait` |
 | Task | `score-and-enrich-routes` | Weather, tips, training, ClickHouse persist/score |
+| Task | `ingest-weather-grid` | Open-Meteo → `weather_forecast_grid` |
 | Tool | `select_route` / `refine_plan` | Interactive map + constraint deltas |
 
 ### ClickHouse (required, deep)
 
-Tables: `plan_sessions`, `routes`, `route_scores` — see [`clickhouse/schema.sql`](clickhouse/schema.sql).
+Tables: `plan_sessions`, `routes`, `route_scores`, `weather_forecast_grid`, `rider_history_rides` — see [`clickhouse/schema.sql`](clickhouse/schema.sql).
 
 Meaningful queries:
 
@@ -102,7 +104,9 @@ Without ClickHouse env vars, the app uses an in-memory stand-in so local demo st
 ├── LICENSE
 ├── package.json                 # root scripts (delegate to apps/web)
 ├── docs/
-│   └── IMPLEMENTATION.md        # full hackathon build + submit plan
+│   ├── IMPLEMENTATION.md        # full hackathon build plan
+│   ├── RUN.md                   # local run + CH/Trigger queries
+│   └── SUBMIT.md                # deploy, video script, form copy, scrub
 ├── clickhouse/
 │   ├── schema.sql
 │   └── seed.sql
@@ -187,7 +191,10 @@ From repo root or `apps/web`:
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run test` | Vitest unit tests |
 | `npm run check` | lint + typecheck + test |
-| `npm run seed:clickhouse` | Apply schema + seed |
+| `npm run seed:clickhouse` | Apply schema + seed + demo athlete |
+| `npm run ingest:weather` | Open-Meteo → `weather_forecast_grid` |
+| `npm run deploy:trigger` | Deploy tasks to Trigger Cloud |
+| `npm run deploy:trigger:dry` | Dry-run Trigger deploy |
 
 ---
 
@@ -213,32 +220,35 @@ Linting uses `eslint-config-next` (core-web-vitals + TypeScript) with stricter p
 
 ## User flow
 
-1. **Chat** a goal / trip idea.
-2. **Wizard** tunes duration, intensity, terrain, start preset, quiet-road bias.
-3. **Generate** three loop candidates.
-4. **Plan Panel** shows map (selectable routes), KPIs, elevation, training effect, tips, similar rides.
-5. **Refine** via chat (“make it hillier”) or re-run the wizard.
+1. Optional: **Load demo athlete history** (ClickHouse fixture).
+2. **Chat** a goal / trip idea (or **Try the demo prompt**).
+3. **Wizard** tunes duration, intensity, terrain, start (preset / map / address).
+4. **Plan Panel**: map, KPIs, elevation sync, coach note, tweaks, GPX, summary.
+5. **Refine** in-plan or via chat; open Trigger + ClickHouse for the judging story.
 
 ---
 
-## MVP scope
+## Scope
 
-**In:** Amsterdam metro presets, round-trip loops, 3 candidates, visual plan, refine, ORS + fallback, ClickHouse scoring, Trigger agent.
+**Shipped for submit:** visual planner (map/address start, tweaks, coach note, GPX, summary), Trigger agent + ORS fan-out + weather ingest, ClickHouse scoring/pipeline/athlete fixture, Google AI Studio, MIT license, submit playbook.
 
-**Out (post-hackathon):** auth, Strava/Garmin, multi-day tours, turn-by-turn nav, live tracking, power-meter physiology.
+**Out for this hackathon:** full multi-platform OAuth product, multi-day tours, turn-by-turn nav, live tracking, power-meter physiology.
 
 ---
 
-## Submission checklist
+## Submission
 
-- [ ] Public GitHub (flip this private repo to public before submit)
-- [ ] MIT or Apache-2.0 license (MIT included)
-- [ ] Demo video ≤ 5 minutes (start with live product)
-- [ ] Meaningful Trigger.dev + ClickHouse usage described in README
+**Playbook (deploy, video script, form copy, secret scrub):** **[docs/SUBMIT.md](docs/SUBMIT.md)**
+
+- [ ] Public GitHub (flip visibility — see SUBMIT §E3)
+- [ ] MIT license (included)
+- [ ] Demo video ≤ 5 minutes (SUBMIT §E4)
+- [ ] Meaningful Trigger.dev + ClickHouse usage (this README + form copy)
 - [ ] Code written during build window
-- [ ] Captain submits via official form
+- [ ] Captain submits via official form (SUBMIT §E5)
 
-See **[docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md)** for the day-by-day hackathon plan, demo script, and risk mitigations.
+Local run: **[docs/RUN.md](docs/RUN.md)**.  
+Product plan: **[docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md)**.
 
 ---
 

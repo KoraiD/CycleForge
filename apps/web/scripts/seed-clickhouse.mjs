@@ -63,5 +63,35 @@ async function runFile(relativePath) {
 
 await runFile("clickhouse/schema.sql");
 await runFile("clickhouse/seed.sql");
+
+// Demo athlete fixture → rider_history_rides (relative dates from "now")
+const athletePath = resolve(appRoot, "src/data/demo-athlete.json");
+const athlete = JSON.parse(readFileSync(athletePath, "utf8"));
+const now = Date.now();
+const athleteRows = athlete.rides.map((ride) => {
+  const started = new Date(now - ride.daysAgo * 86400000);
+  started.setUTCHours(9, 0, 0, 0);
+  return {
+    athlete_id: athlete.athleteId,
+    ride_id: ride.rideId,
+    started_at: started.toISOString().replace("T", " ").replace("Z", ""),
+    label: ride.label,
+    distance_m: ride.distanceM,
+    duration_s: ride.durationS,
+    elev_gain_m: ride.elevGainM,
+    tss_est: ride.tssEst,
+    intensity: ride.intensity,
+    source: "fixture",
+  };
+});
+await client.insert({
+  table: "rider_history_rides",
+  values: athleteRows,
+  format: "JSONEachRow",
+});
+console.log(
+  `OK: seeded ${athleteRows.length} rider_history_rides for ${athlete.athleteId}`,
+);
+
 console.log("ClickHouse schema + seed applied.");
 await client.close();

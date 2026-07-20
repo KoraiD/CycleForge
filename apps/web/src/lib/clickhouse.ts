@@ -1,9 +1,20 @@
 import { createClient, type ClickHouseClient } from "@clickhouse/client";
+import {
+  buildDemoAthleteRides,
+  DEMO_ATHLETE_ID,
+  summarizeAthleteHistory,
+  summarizeDemoAthlete,
+  type RiderHistoryRide,
+} from "./athlete-history";
+import { attachCoachNote } from "./coach-note";
 import type {
+  HistoryContext,
+  Intensity,
   PlanPayload,
   RouteCandidate,
   WizardState,
 } from "./types";
+import type { WeatherGridRow } from "./weather-grid";
 
 let client: ClickHouseClient | null = null;
 
@@ -225,7 +236,7 @@ export async function getMemoryPlan(sessionId: string): Promise<PlanPayload | nu
   if (!wizard || !routes?.length) return null;
   const climbs = routes.map((r) => r.elevGainM);
   const distances = routes.map((r) => r.distanceM / 1000);
-  return {
+  return attachCoachNote({
     sessionId,
     wizard,
     routes,
@@ -236,5 +247,218 @@ export async function getMemoryPlan(sessionId: string): Promise<PlanPayload | nu
       minDistanceKm: Math.min(...distances),
       maxDistanceKm: Math.max(...distances),
     },
-  };
+  });
+}
+
+const memoryWeather = new Map<string, WeatherGridRow>();
+const memoryAthleteRides = new Map<string, RiderHistoryRide[]>();
+
+function formatChDateTime(d: Date): string {
+  return d.toISOString().replace("T", " ").replace("Z", "");
+}
+
+export async function upsertRiderHistoryRides(
+  rides: RiderHistoryRide[],
+): Promise<void> {
+  if (!rides.length) return;
+  const byAthlete = new Map<string, RiderHistoryRide[]>();
+  for (const ride of rides) {
+    const list = byAthlete.get(ride.athleteId) ?? [];
+    list.push(ride);
+    byAthlete.set(ride.athleteId, list);
+  }
+  for (const [athleteId, list] of byAthlete) {
+    memoryAthleteRides.set(athleteId, list);
+  }
+
+  const ch = getClient();
+  if (!ch) return;
+
+  try {
+    await ch.insert({
+      table: "rider_history_rides",
+      values: rides.map((r) => ({
+        athlete_id: r.athleteId,
+        ride_id: r.rideId,
+        started_at: formatChDateTime(r.startedAt),
+        label: r.label,
+        distance_m: r.distanceM,
+        duration_s: r.durationS,
+        elev_gain_m: r.elevGainM,
+        tss_est: r.tssEst,
+        intensity: r.intensity,
+        source: r.source,
+      })),
+      format: "JSONEachRow",
+    });
+  } catch (err) {
+    console.warn("ClickHouse upsertRiderHistoryRides failed", err);
+  }
+}
+
+export async function ensureDemoAthleteSeeded(): Promise<HistoryContext> {
+  const rides = buildDemoAthleteRides();
+  await upsertRiderHistoryRides(rides);
+  return summarizeDemoAthlete();
+}
+
+export async function queryRiderHistory(
+  athleteId: string,
+): Promise<RiderHistoryRide[]> {
+  const ch = getClient();
+  if (!ch) {
+    return memoryAthleteRides.get(athleteId) ?? [];
+  }
+
+  try {
+    const result = await ch.query({
+      query: `
+        SELECT
+          athlete_id AS athleteId,
+          ride_id AS rideId,
+          toString(started_at) AS startedAt,
+          label,
+          distance_m AS distanceM,
+          duration_s AS durationS,
+          elev_gain_m AS elevGainM,
+          tss_est AS tssEst,
+          intensity,
+          source
+        FROM rider_history_rides
+        WHERE athlete_id = {athleteId:String}
+        ORDER BY started_at DESC
+      `,
+      query_params: { athleteId },
+      format: "JSONEachRow",
+    });
+    const rows = (await result.json()) as Array<{
+      athleteId: string;
+      rideId: string;
+      startedAt: string;
+      label: string;
+      distanceM: number;
+      durationS: number;
+      elevGainM: number;
+      tssEst: number;
+      intensity: Intensity;
+      source: "fixture" | "upload";
+    }>;
+    return rows.map((r) => ({
+      ...r,
+      startedAt: new Date(r.startedAt.includes("T") ? r.startedAt : `${r.startedAt}Z`),
+    }));
+  } catch (err) {
+    console.warn("ClickHouse queryRiderHistory failed", err);
+    return memoryAthleteRides.get(athleteId) ?? [];
+  }
+}
+
+export async function getHistoryContext(
+  athleteId: string,
+): Promise<HistoryContext | null> {
+  if (athleteId === DEMO_ATHLETE_ID) {
+    const rides = await queryRiderHistory(athleteId);
+    if (rides.length > 0) {
+      return summarizeAthleteHistory(rides, {
+        athleteId: DEMO_ATHLETE_ID,
+        athleteLabel: "Demo AMS rider",
+        source: "fixture",
+      });
+    }
+    return summarizeDemoAthlete();
+  }
+
+  const rides = await queryRiderHistory(athleteId);
+  if (!rides.length) return null;
+  return summarizeAthleteHistory(rides, {
+    athleteId,
+    athleteLabel: athleteId,
+    source: rides[0]?.source ?? "upload",
+  });
+}
+
+export async function upsertWeatherGridRows(
+  rows: WeatherGridRow[],
+): Promise<void> {
+  if (!rows.length) return;
+  for (const row of rows) {
+    memoryWeather.set(row.tileId, row);
+  }
+
+  const ch = getClient();
+  if (!ch) return;
+
+  try {
+    await ch.insert({
+      table: "weather_forecast_grid",
+      values: rows.map((r) => ({
+        tile_id: r.tileId,
+        tile_lat: r.tileLat,
+        tile_lng: r.tileLng,
+        observed_at: r.observedAt.replace("T", " ").replace("Z", ""),
+        temp_c: r.tempC,
+        wind_kmh: r.windKmh,
+        wind_dir_deg: r.windDirDeg,
+        precip_mm: r.precipMm,
+        weather_code: r.weatherCode,
+        summary: r.summary,
+        source: "open-meteo",
+      })),
+      format: "JSONEachRow",
+    });
+  } catch (err) {
+    console.warn("ClickHouse upsertWeatherGridRows failed", err);
+  }
+}
+
+/** Nearest tile within ~0.15° (~15 km); prefers freshest observed_at. */
+export async function queryNearestWeather(
+  lat: number,
+  lng: number,
+): Promise<WeatherGridRow | null> {
+  const ch = getClient();
+  if (!ch) {
+    let best: WeatherGridRow | null = null;
+    let bestDist = Infinity;
+    for (const row of memoryWeather.values()) {
+      const dist = Math.abs(row.tileLat - lat) + Math.abs(row.tileLng - lng);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = row;
+      }
+    }
+    return bestDist <= 0.15 ? best : null;
+  }
+
+  try {
+    const result = await ch.query({
+      query: `
+        SELECT
+          tile_id AS tileId,
+          tile_lat AS tileLat,
+          tile_lng AS tileLng,
+          toString(observed_at) AS observedAt,
+          temp_c AS tempC,
+          wind_kmh AS windKmh,
+          wind_dir_deg AS windDirDeg,
+          precip_mm AS precipMm,
+          weather_code AS weatherCode,
+          summary
+        FROM weather_forecast_grid
+        WHERE abs(tile_lat - {lat:Float64}) <= 0.15
+          AND abs(tile_lng - {lng:Float64}) <= 0.15
+        ORDER BY
+          (abs(tile_lat - {lat:Float64}) + abs(tile_lng - {lng:Float64})) ASC,
+          observed_at DESC
+        LIMIT 1
+      `,
+      query_params: { lat, lng },
+      format: "JSONEachRow",
+    });
+    const rows = (await result.json()) as WeatherGridRow[];
+    return rows[0] ?? null;
+  } catch (err) {
+    console.warn("ClickHouse queryNearestWeather failed", err);
+    return null;
+  }
 }

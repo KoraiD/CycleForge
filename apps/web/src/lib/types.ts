@@ -11,6 +11,8 @@ export type WizardState = {
   startPreset: StartPreset;
   startLat: number;
   startLng: number;
+  /** Human-readable start (address or preset label). */
+  startLabel: string;
   avoidBusyRoads: boolean;
   confirmed: boolean;
 };
@@ -42,6 +44,8 @@ export type WeatherSnapshot = {
   windDirDeg: number;
   precipMm: number;
   summary: string;
+  /** Where the snapshot was resolved from. */
+  source?: "clickhouse" | "open-meteo";
 };
 
 export type RouteScore = {
@@ -71,11 +75,33 @@ export type RouteCandidate = {
   source: "ors" | "fallback" | "seed";
 };
 
+/** Aggregates from rider_history_rides / demo fixture for coaching. */
+export type HistoryContext = {
+  athleteId: string;
+  athleteLabel: string;
+  source: "fixture" | "upload";
+  rideCount: number;
+  weeks: number;
+  hoursLast7d: number;
+  hoursLast28d: number;
+  tssLast7d: number;
+  tssLast28d: number;
+  lastHardLabel: string | null;
+  lastHardDaysAgo: number | null;
+  recentLabels: string[];
+  summaryLine: string;
+  loadHint: string;
+};
+
 export type PlanPayload = {
   sessionId: string;
   wizard: WizardState;
   routes: RouteCandidate[];
   selectedRouteId: string;
+  /** Short coaching suggestion for the selected route (lives on the plan, not in chat). */
+  coachNote: string;
+  /** Present when a demo/imported athlete is bound to the session. */
+  historyContext?: HistoryContext;
   comparison: {
     minClimbM: number;
     maxClimbM: number;
@@ -93,6 +119,7 @@ export const DEFAULT_WIZARD = (sessionId: string): WizardState => ({
   startPreset: "vondelpark",
   startLat: 52.3577,
   startLng: 4.8686,
+  startLabel: "Vondelpark",
   avoidBusyRoads: true,
   confirmed: false,
 });

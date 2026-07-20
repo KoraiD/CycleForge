@@ -63,3 +63,36 @@ SELECT
     2
   ) AS total_sql
 FROM route_scores;
+
+-- Demo / imported athlete rides (fixture path for hackathon — not live OAuth).
+CREATE TABLE IF NOT EXISTS rider_history_rides (
+  athlete_id String,
+  ride_id String,
+  started_at DateTime64(3, 'UTC'),
+  label String,
+  distance_m Float64,
+  duration_s Float64,
+  elev_gain_m Float64,
+  tss_est Float64,
+  intensity LowCardinality(String),
+  source LowCardinality(String) DEFAULT 'fixture',
+  ingested_at DateTime64(3, 'UTC') DEFAULT now64(3)
+) ENGINE = ReplacingMergeTree(ingested_at)
+ORDER BY (athlete_id, started_at, ride_id);
+
+-- Open-data weather pipeline (Open-Meteo → Trigger ingest → plan-time SQL join).
+CREATE TABLE IF NOT EXISTS weather_forecast_grid (
+  tile_id String,
+  tile_lat Float64,
+  tile_lng Float64,
+  observed_at DateTime64(3, 'UTC'),
+  temp_c Float64,
+  wind_kmh Float64,
+  wind_dir_deg Float64,
+  precip_mm Float64,
+  weather_code UInt16,
+  summary LowCardinality(String),
+  source LowCardinality(String) DEFAULT 'open-meteo',
+  ingested_at DateTime64(3, 'UTC') DEFAULT now64(3)
+) ENGINE = ReplacingMergeTree(ingested_at)
+ORDER BY (tile_lat, tile_lng, observed_at);
