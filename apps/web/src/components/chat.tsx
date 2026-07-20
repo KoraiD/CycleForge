@@ -13,6 +13,7 @@ import {
   updateWizardAction,
 } from "@/app/actions";
 import type { cycleforgeAgent } from "@/trigger/cycleforge-agent";
+import { attachCoachNote } from "@/lib/coach-note";
 import { START_PRESETS } from "@/lib/constants";
 import { DEFAULT_WIZARD, type PlanPayload, type WizardState } from "@/lib/types";
 import { BrandMark } from "./brand-mark";
@@ -195,7 +196,7 @@ export function Chat() {
 
   const onSelectRoute = (routeId: string) => {
     if (demoPlan) {
-      setDemoPlan({ ...demoPlan, selectedRouteId: routeId });
+      setDemoPlan(attachCoachNote({ ...demoPlan, selectedRouteId: routeId }));
     }
     if (agentEnabled) {
       void sendMessage({ text: `Select route ${routeId}` });

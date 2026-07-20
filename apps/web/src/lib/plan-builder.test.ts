@@ -48,6 +48,8 @@ describe("plan-builder", () => {
     expect(plan.routes[0].training.tssEst).toBeGreaterThan(0);
     expect(plan.routes[0].tips.length).toBeGreaterThan(0);
     expect(plan.routes[0].score.total).toBeGreaterThan(0);
+    expect(plan.coachNote.length).toBeGreaterThan(40);
+    expect(plan.coachNote).toContain(plan.routes[0].label);
     expect(plan.comparison.maxDistanceKm).toBeGreaterThan(
       plan.comparison.minDistanceKm - 0.01,
     );

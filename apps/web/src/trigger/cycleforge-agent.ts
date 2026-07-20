@@ -2,8 +2,9 @@ import { chat } from "@trigger.dev/sdk/ai";
 import { google } from "@ai-sdk/google";
 import { streamText, stepCountIs, tool } from "ai";
 import { z } from "zod";
-import { AGENT_SYSTEM_PROMPT } from "@/lib/constants";
 import { upsertSession } from "@/lib/clickhouse";
+import { attachCoachNote } from "@/lib/coach-note";
+import { AGENT_SYSTEM_PROMPT } from "@/lib/constants";
 import { mergeWizard } from "@/lib/plan-builder";
 import { getPlan, getWizard, setPlan, setWizard } from "@/lib/session-store";
 import type { Intensity, PlanPayload, StartPreset, TerrainBias } from "@/lib/types";
@@ -99,7 +100,7 @@ function createTools(sessionId: string) {
       execute: async ({ routeId }) => {
         const plan = getPlan(sessionId);
         if (!plan) return { error: "No plan yet", ui: "error" as const };
-        const next = { ...plan, selectedRouteId: routeId };
+        const next = attachCoachNote({ ...plan, selectedRouteId: routeId });
         setPlan(next);
         return { ui: "plan" as const, plan: next };
       },
