@@ -1,257 +1,177 @@
 # CycleForge
 
-**Visual cycling training planner** for the [ClickHouse × Trigger.dev Summer Hackathon 2026](https://triggerdev.clickhouse.com).
+**Chat a cycling goal. Get a map, not a wall of text.**
 
-> Theme: **Beyond the Wall of Text** — chat should answer with maps, elevation, training metrics, and an interactive wizard. Prose is garnish.
+CycleForge is a visual training planner for the [ClickHouse × Trigger.dev Summer Hackathon 2026](https://triggerdev.clickhouse.com) — theme **Beyond the Wall of Text**.
 
-CycleForge turns a training goal or trip idea into a **visual plan**: three route candidates on a map, elevation profiles, estimated training effect (TSS / zones), weather-aware tips, and ClickHouse-backed scoring + “similar rides”.
+You describe the ride you want. The app answers with **three route options on a map**, elevation, training load (TSS), weather-aware coaching, and a ride you can export — all backed by durable Trigger.dev jobs and ClickHouse analytics.
 
 ---
 
-## Demo prompt
+## Try the demo (what judges / visitors should see)
+
+Use this prompt (or click **Try the demo prompt** in the UI):
 
 > I have 90 minutes tomorrow morning near Amsterdam — endurance ride, some hills if possible, avoid busy roads.
 
----
+### Demo features (MVP)
 
-## Why this fits the judging rubric
-
-| Criterion | How CycleForge addresses it |
+| You do… | You get… |
 | --- | --- |
-| **Use of ClickHouse & Trigger.dev (25%)** | `chat.agent()` + durable child tasks; ClickHouse stores routes/scores and runs ranking + similar-ride SQL |
-| **Problem fit (20%)** | Response *is* the product: wizard → map → charts → structured training data |
-| **Technical implementation (20%)** | Next.js App Router, AI SDK tools, ORS fan-out with fallbacks, typed plan payload |
-| **Innovation (20%)** | Training-effect block + SQL scoring + refine loop inside chat |
-| **Scalability & impact (10%)** | Session/route tables designed for history; seeded rides simulate a real corpus |
-| **Presentation (5%)** | Clear demo script in [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md) |
+| Load demo athlete history | ~3 weeks of fixture rides in ClickHouse → load-aware coach note + TSS calendar |
+| Pick a start (map pin, address, or nearby suggestion) | Routes from *your* point — not a fixed city list |
+| Send the goal (or demo prompt) | Wizard + **three scored loops** on an interactive map |
+| Click routes / hover elevation | Map ↔ profile stay in sync; wind bands tint headwind vs tailwind |
+| Scrub “Should I cycle?” hours | Best leave window from hourly weather (go / caution / wait) |
+| Open “Explain this score” | Plain-language + SQL-flavored breakdown of ClickHouse ranking |
+| Compare on the radar chart | Goal fit · quiet · scenic · weather across candidates |
+| Tune & regenerate | Shorter / hillier / easier (or sliders) without leaving the plan |
+| Download GPX · Open summary | Export the ride; share a printable visual summary |
+| Open **Stack** | Live ClickHouse counts + Trigger run peek for the “how it works” story |
+
+Optional while generating: a **Trigger fan-out** graphic shows durable ORS + scoring steps.
 
 ---
 
-## Architecture
+## What’s in scope vs out of scope
+
+### In this MVP (shipped)
+
+- Visual chat → wizard → 3-route plan (Amsterdam-biased demo; map/address works elsewhere)
+- Trigger.dev agent + parallel route fetch + score/enrich tasks + weather ingest
+- ClickHouse sessions, routes, SQL ranking, weather grid, athlete history, similar rides
+- Coach note, GPX export, summary page, GPX history upload (no live OAuth)
+- Bring-your-own keys: host locally; paste Trigger, ClickHouse, and AI credentials in **Setup**
+- AI providers: Google AI Studio, OpenAI, Anthropic, or local (Ollama / LM Studio, etc.)
+
+### Out of scope (intentionally)
+
+- Full Strava / Garmin / TrainingPeaks OAuth product
+- Multi-day tours, turn-by-turn navigation, live GPS tracking
+- Power-meter physiology or a production SaaS multi-tenant deploy
+- Bundled cloud credentials — **you bring your own**
+
+---
+
+## Run it on your machine (no shared secrets)
+
+CycleForge is open-source and **bring-your-own-keys**. Nothing in this repo unlocks our (or anyone else’s) cloud accounts.
+
+### You need
+
+1. [Node.js 22+](https://nodejs.org) and npm  
+2. Free/dev accounts as you like:
+   - [Trigger.dev](https://trigger.dev) (agent + durable tasks)
+   - [ClickHouse Cloud](https://clickhouse.com/cloud) or self-hosted ClickHouse
+   - An AI key: [Google AI Studio](https://aistudio.google.com/apikey), [OpenAI](https://platform.openai.com), [Anthropic](https://console.anthropic.com), **or** a local server ([Ollama](https://ollama.com) / [LM Studio](https://lmstudio.ai))
+   - Optional: [OpenRouteService](https://openrouteservice.org) for real bike geometries
+
+### Steps
+
+```bash
+git clone https://github.com/KoraiD/CycleForge.git
+cd CycleForge/apps/web
+npm install
+npm run dev
+```
+
+1. Open **http://localhost:3000/setup**  
+2. Paste your Trigger, ClickHouse, and AI details → **Save & apply**  
+   (saves locally to `.data/` + `.env.local`, pings ClickHouse, seeds tables when reachable)  
+3. Restart the UI, then in a second terminal: `npm run dev:trigger`  
+4. Open **http://localhost:3000** → Load demo athlete → Try the demo prompt  
+
+**Without** Trigger or AI keys, the planner still works in **local demo mode** (cached/fallback routes) so you can explore the UI.
+
+Secrets never leave your machine unless you put them in your own Trigger/ClickHouse projects. Do not commit `.env.local` or `.data/`.
+
+Full technical runbook (queries, health checks, CI): **[docs/RUN.md](docs/RUN.md)**.  
+Submit / video / scrub checklist: **[docs/SUBMIT.md](docs/SUBMIT.md)**.  
+Security notes: **[SECURITY.md](SECURITY.md)**.
+
+---
+
+## Why this fits the hackathon
+
+| Rubric | How CycleForge answers |
+| --- | --- |
+| **ClickHouse & Trigger.dev (25%)** | Durable `chat.agent` + ORS fan-out + scoring; CH stores routes/scores, weather pipeline, SQL ranking, athlete history |
+| **Problem fit (20%)** | The response *is* the product: wizard, map, charts, coach note — prose is secondary |
+| **Technical implementation (20%)** | Next.js, AI SDK tools, parallel tasks, typed plan payload, fallbacks |
+| **Innovation (20%)** | Training effect + SQL scoring + in-plan refine loop + weather/load visuals |
+| **Scalability & impact (10%)** | Session/route tables + seed corpus; BYOK so others can host |
+| **Presentation (5%)** | Clear demo path above + ≤5 min script in SUBMIT |
+
+### How the pieces connect
 
 ```text
 Browser (Next.js)
-  ├─ useChat + useTriggerChatTransport
-  ├─ Wizard (in-transcript controls)
-  └─ Plan Panel (MapLibre + Recharts)
+  ├─ Chat + wizard + plan panel (map, charts, coach note)
+  └─ Setup (your Trigger / ClickHouse / AI keys)
         │
         ▼
-Trigger.dev chat.agent  (cycleforge-agent)
-  tools: upsert_wizard_state | load_demo_athlete | generate_route_candidates
-         select_route | refine_plan
+Trigger.dev  cycleforge-agent  (chat.agent)
+  tools → generate routes → score & enrich
         │
-        ├─► generate-route-candidates
-        │     └─► fetch-ors-route-batch
-        │           ├─► fetch-ors-route  (×3 parallel)  ← batchTriggerAndWait
-        └─► score-and-enrich-routes
-              ├─ CH weather grid (fallback Open-Meteo)
-              ├─ training + tips + coach note
-              └─ ClickHouse persist + route_scores_ranked + similar rides
+        ├─ fetch-ors-route ×3 in parallel
+        ├─ score-and-enrich-routes
+        └─ ingest-weather-grid (schedule / CLI)
         │
-        └─► ingest-weather-grid  (schedule / CLI → weather_forecast_grid)
+        ▼
+ClickHouse
+  plan_sessions · routes · route_scores · route_scores_ranked
+  weather_forecast_grid · rider_history_rides · training_blocks
 ```
-
-### Trigger.dev (required, deep)
-
-| Piece | ID / name | Role |
-| --- | --- | --- |
-| Chat agent | `cycleforge-agent` | Durable multi-turn session via `chat.agent()` |
-| Tool | `upsert_wizard_state` | Merge wizard → memory + `plan_sessions` |
-| Tool | `load_demo_athlete` | Fixture athlete → `rider_history_rides` |
-| Tool | `generate_route_candidates` | Kick durable generation + scoring |
-| Task | `generate-route-candidates` | Orchestrate route fan-out |
-| Task | `fetch-ors-route-batch` | Orchestrates durable ORS fan-out |
-| Task | `fetch-ors-route` ×3 | Parallel child runs via `batchTriggerAndWait` |
-| Task | `score-and-enrich-routes` | Weather, tips, training, ClickHouse persist/score |
-| Task | `ingest-weather-grid` | Open-Meteo → `weather_forecast_grid` |
-| Tool | `select_route` / `refine_plan` | Interactive map + constraint deltas |
-
-### ClickHouse (required, deep)
-
-Tables: `plan_sessions`, `routes`, `route_scores`, `weather_forecast_grid`, `rider_history_rides` — see [`clickhouse/schema.sql`](clickhouse/schema.sql).
-
-Meaningful queries:
-
-```sql
--- Rank candidates for a session (SQL recomputes the weighted total)
-SELECT route_id, total_sql, total_stored, goal_fit, weather_fit
-FROM route_scores_ranked
-WHERE session_id = {sessionId:String}
-ORDER BY total_sql DESC;
-
--- Similar historical rides
-SELECT label,
-  abs(distance_m - {distanceM:Float64}) / 1000
-  + abs(elev_gain_m - {elevGainM:Float64}) / 10
-  + abs(duration_s - {durationS:Float64}) / 600 AS dist
-FROM routes
-WHERE is_seed = 1
-ORDER BY dist ASC
-LIMIT 3;
-```
-
-Seed data: [`clickhouse/seed.sql`](clickhouse/seed.sql) (~20 synthetic Amsterdam-area rides).
-
-Without ClickHouse env vars, the app uses an in-memory stand-in so local demo still works.
 
 ---
 
-## Repository layout
+## For developers
+
+| Doc | Use when |
+| --- | --- |
+| [docs/RUN.md](docs/RUN.md) | Health checks, seed, SQL for demos, CI |
+| [docs/SUBMIT.md](docs/SUBMIT.md) | Video script, form paste, public-repo scrub |
+| [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md) | Full build plan / backlog |
+| [apps/web/.env.example](apps/web/.env.example) | Manual env template (Setup UI preferred) |
+| [clickhouse/schema.sql](clickhouse/schema.sql) | Tables + ranking view |
+
+```bash
+cd apps/web
+npm run check          # lint + typecheck + vitest
+curl -s http://localhost:3000/api/health | python3 -m json.tool
+```
+
+---
+
+## Project layout
 
 ```text
 .
-├── README.md
-├── LICENSE
-├── package.json                 # root scripts (delegate to apps/web)
+├── README.md                 ← you are here (product + how to run)
+├── SECURITY.md               ← secrets / public-repo rules
+├── LICENSE                   ← MIT
 ├── docs/
-│   ├── IMPLEMENTATION.md        # full hackathon build plan
-│   ├── RUN.md                   # local run + CH/Trigger queries
-│   └── SUBMIT.md                # deploy, video script, form copy, scrub
-├── clickhouse/
-│   ├── schema.sql
-│   └── seed.sql
-└── apps/web/                    # Next.js + Trigger tasks
-    ├── src/
-    │   ├── app/                 # UI routes + server actions
-    │   ├── components/          # Chat, Wizard, Plan Panel, map, charts
-    │   ├── data/golden-routes/  # cached ORS GeoJSON per start preset
-    │   ├── lib/                 # scoring, geometry, ORS, CH, tips, tests
-    │   └── trigger/             # chat.agent + schemaTasks
-    ├── trigger.config.ts
-    ├── vitest.config.ts
-    └── .env.example
+│   ├── RUN.md                ← technical local run + queries
+│   ├── SUBMIT.md             ← video script, form copy, scrub checklist
+│   └── IMPLEMENTATION.md     ← build plan / backlog (hackathon working doc)
+├── clickhouse/               ← schema + seed SQL
+└── apps/web/                 ← Next.js UI + Trigger tasks
 ```
 
 ---
 
-## Prerequisites
+## Scripts (from `apps/web`)
 
-- Node.js 22+
-- npm 10+
-- Accounts (for full stack): [Trigger.dev](https://trigger.dev), [ClickHouse Cloud](https://clickhouse.com/cloud), [Google AI Studio](https://aistudio.google.com/apikey)
-- Optional: [OpenRouteService](https://openrouteservice.org) API key
-
----
-
-## Quick start
-
-Full walkthrough (tests, UI, ClickHouse queries, Trigger dashboard): **[docs/RUN.md](docs/RUN.md)**.
-
-```bash
-git clone <your-private-repo-url>
-cd CH-Trigger-Hackathon   # or cycleforge
-
-cd apps/web
-cp .env.example .env.local
-# Fill TRIGGER_SECRET_KEY, TRIGGER_PROJECT_REF, GOOGLE_GENERATIVE_AI_API_KEY
-# Optional: CLICKHOUSE_*, ORS_API_KEY
-
-npm install
-npm run seed:clickhouse   # if ClickHouse is configured
-
-# Terminal 1
-npm run dev
-
-# Terminal 2 (full agent)
-npm run dev:trigger
-```
-
-Open [http://localhost:3000](http://localhost:3000).
-
-**Local demo mode:** if Trigger/Google AI are missing, the UI still generates plans via golden/fallback geometry + Open-Meteo (see health probe `/api/health`).
-
----
-
-## Environment variables
-
-Copy from [`apps/web/.env.example`](apps/web/.env.example):
-
-| Variable | Required for | Notes |
-| --- | --- | --- |
-| `TRIGGER_SECRET_KEY` | Agent chat | From Trigger.dev dashboard |
-| `TRIGGER_PROJECT_REF` | Deploy / `trigger.config.ts` | e.g. `proj_…` |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | Agent model | From [Google AI Studio](https://aistudio.google.com/apikey) |
-| `GOOGLE_GENERATIVE_AI_MODEL` | Optional | Default `gemini-flash-latest` |
-| `CLICKHOUSE_URL` | Persist / SQL score | Cloud HTTPS endpoint |
-| `CLICKHOUSE_USER` / `PASSWORD` / `DATABASE` | ClickHouse auth | |
-| `ORS_API_KEY` | Real geometries | Without it → synthetic Amsterdam loops |
-
----
-
-## Scripts
-
-From repo root or `apps/web`:
-
-| Script | Purpose |
+| Command | What it does |
 | --- | --- |
-| `npm run dev` | Next.js dev server |
-| `npm run dev:trigger` | Trigger.dev local worker |
-| `npm run build` | Production build |
-| `npm run lint` | ESLint (zero warnings) |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm run test` | Vitest unit tests |
-| `npm run check` | lint + typecheck + test |
-| `npm run seed:clickhouse` | Apply schema + seed + demo athlete |
-| `npm run ingest:weather` | Open-Meteo → `weather_forecast_grid` |
-| `npm run deploy:trigger` | Deploy tasks to Trigger Cloud |
-| `npm run deploy:trigger:dry` | Dry-run Trigger deploy |
-
----
-
-## Testing & quality
-
-```bash
-cd apps/web
-npm run check
-```
-
-Unit tests cover:
-
-- Geometry (distance, elev gain/loss, synthetic loops)
-- Scoring (targets, weather penalties)
-- Training effect (stimulus / zones / TSS)
-- Tips + comparison strip
-- Fallback route generation
-- Plan builder (merge wizard + end-to-end plan with mocks)
-
-Linting uses `eslint-config-next` (core-web-vitals + TypeScript) with stricter project rules: no `any`, unused vars as errors, consistent type imports, `eqeqeq`.
-
----
-
-## User flow
-
-1. Optional: **Load demo athlete history** (ClickHouse fixture).
-2. **Chat** a goal / trip idea (or **Try the demo prompt**).
-3. **Wizard** tunes duration, intensity, terrain, start (preset / map / address).
-4. **Plan Panel**: map, KPIs, elevation sync, coach note, tweaks, GPX, summary.
-5. **Refine** in-plan or via chat; open Trigger + ClickHouse for the judging story.
-
----
-
-## Scope
-
-**Shipped for submit:** visual planner (map/address start, tweaks, coach note, GPX, summary), Trigger agent + ORS fan-out + weather ingest, ClickHouse scoring/pipeline/athlete fixture, Google AI Studio, MIT license, submit playbook.
-
-**Out for this hackathon:** full multi-platform OAuth product, multi-day tours, turn-by-turn nav, live tracking, power-meter physiology.
-
----
-
-## Submission
-
-**Playbook (deploy, video script, form copy, secret scrub):** **[docs/SUBMIT.md](docs/SUBMIT.md)**
-
-- [ ] Public GitHub (flip visibility — see SUBMIT §E3)
-- [ ] MIT license (included)
-- [ ] Demo video ≤ 5 minutes (SUBMIT §E4)
-- [ ] Meaningful Trigger.dev + ClickHouse usage (this README + form copy)
-- [ ] Code written during build window
-- [ ] Captain submits via official form (SUBMIT §E5)
-
-Local run: **[docs/RUN.md](docs/RUN.md)**.  
-Product plan: **[docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md)**.
+| `npm run dev` | Start the web app |
+| `npm run dev:trigger` | Start the Trigger.dev worker |
+| `npm run check` | Lint + typecheck + unit tests |
+| `npm run seed:clickhouse` | Apply schema/seed (also done from Setup when CH is reachable) |
+| `npm run ingest:weather` | Refresh open weather grid into ClickHouse |
 
 ---
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) — use it, fork it, host it with your own keys.

@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { resolveBestLeave } from "./best-leave";
 import {
   findSimilarRides,
   getHistoryContext,
@@ -11,13 +12,18 @@ import { generateRawRoutes } from "./ors";
 import { scoreRoute } from "./scoring";
 import { getSessionAthlete } from "./session-store";
 import { buildTips, comparisonFromRoutes } from "./tips";
-import { estimateTraining } from "./training";
+import { buildEffortSegments, estimateTraining } from "./training";
 import type { PlanPayload, RouteCandidate, WizardState } from "./types";
 import { resolveWeather } from "./weather";
 
 export async function buildPlan(wizard: WizardState): Promise<PlanPayload> {
   await upsertSession(wizard, wizard.goalsText);
   const weather = await resolveWeather(wizard.startLat, wizard.startLng);
+  const leaveWindow = await resolveBestLeave(
+    wizard.startLat,
+    wizard.startLng,
+    wizard.durationMin,
+  );
   const athleteId = getSessionAthlete(wizard.sessionId);
   const historyContext = athleteId
     ? ((await getHistoryContext(athleteId)) ?? undefined)
@@ -32,6 +38,7 @@ export async function buildPlan(wizard: WizardState): Promise<PlanPayload> {
       elevGainM: raw.elevGainM,
       intensity: wizard.intensity,
       terrainBias: wizard.terrainBias,
+      ftpWatts: wizard.ftpWatts,
     });
     const score = scoreRoute({
       wizard,
@@ -70,6 +77,7 @@ export async function buildPlan(wizard: WizardState): Promise<PlanPayload> {
       score,
       similarRideLabels,
       source: raw.source,
+      effortSegments: buildEffortSegments(raw.elevProfile),
     });
   }
 
@@ -78,6 +86,7 @@ export async function buildPlan(wizard: WizardState): Promise<PlanPayload> {
 
   return attachCoachNote({
     sessionId: wizard.sessionId,
+    leaveWindow,
     wizard,
     routes,
     selectedRouteId: routes[0]?.routeId ?? "",

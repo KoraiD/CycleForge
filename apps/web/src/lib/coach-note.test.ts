@@ -61,7 +61,7 @@ describe("coach-note", () => {
       route: makeRoute(),
     });
     expect(note).toContain("Park & parkway");
-    expect(note).toContain("Wind");
+    expect(note).toMatch(/Weather:.*wind/i);
     expect(note).toContain("Waterland Sunday");
     expect(note.split("\n\n").length).toBeGreaterThanOrEqual(2);
     expect(note.length).toBeLessThan(900);

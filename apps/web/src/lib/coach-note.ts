@@ -46,14 +46,19 @@ export function buildCoachNote(input: {
     }
   }
 
-  // Weather next so it survives the short how-to budget.
+  // Weather always surfaces in the coach note when a snapshot exists.
   if (weather) {
+    const wxBits = [
+      weather.summary,
+      `${Math.round(weather.tempC)}°C`,
+      `wind ${Math.round(weather.windKmh)} km/h`,
+    ];
+    if (weather.precipMm >= 0.5) wxBits.push("wet roads possible");
+    howTo.push(`Weather: ${wxBits.join(" · ")}.`);
     if (weather.windKmh >= 22) {
       howTo.push(
-        `Wind ~${Math.round(weather.windKmh)} km/h — budget harder effort into the breeze and recover with it.`,
+        "Budget harder effort into the breeze and recover with it.",
       );
-    } else if (weather.precipMm >= 0.5) {
-      howTo.push("Wet roads possible — ease off on bridges and painted lines.");
     } else if (weather.tempC >= 24) {
       howTo.push("Warm day — start hydrated and ease the first 10 minutes.");
     } else if (weather.tempC <= 8) {

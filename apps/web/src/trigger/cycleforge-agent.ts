@@ -1,12 +1,13 @@
 import { chat } from "@trigger.dev/sdk/ai";
-import { google } from "@ai-sdk/google";
 import { streamText, stepCountIs, tool } from "ai";
 import { z } from "zod";
+import { getChatModel } from "@/lib/ai-model";
 import { DEMO_ATHLETE_ID, suggestIntensityFromHistory } from "@/lib/athlete-history";
 import { ensureDemoAthleteSeeded, upsertSession } from "@/lib/clickhouse";
 import { attachCoachNote } from "@/lib/coach-note";
 import { AGENT_SYSTEM_PROMPT } from "@/lib/constants";
 import { mergeWizard } from "@/lib/plan-builder";
+import { ensureRuntimeConfigLoaded } from "@/lib/runtime-config";
 import {
   getPlan,
   getWizard,
@@ -22,7 +23,7 @@ function createTools(sessionId: string) {
   return {
     load_demo_athlete: tool({
       description:
-        "Load the fixture demo athlete (≈3 weeks of Amsterdam rides) into ClickHouse history for coaching. Prefer this over inventing training history. Never claim a live Strava/Garmin OAuth import.",
+        "Load the fixture demo athlete (≈3 weeks of Amsterdam rides) into ClickHouse history for coaching. Prefer this over inventing training history. Riders can also upload GPX exports in the UI; never claim a live Strava/Garmin/TrainingPeaks OAuth import.",
       inputSchema: z.object({}),
       execute: async () => {
         const history = await ensureDemoAthleteSeeded();
@@ -67,6 +68,7 @@ function createTools(sessionId: string) {
         startLabel: z.string().optional(),
         avoidBusyRoads: z.boolean().optional(),
         confirmed: z.boolean().optional(),
+        ftpWatts: z.number().min(80).max(500).nullable().optional(),
       }),
       execute: async (patch) => {
         const current = getWizard(sessionId);
@@ -75,6 +77,7 @@ function createTools(sessionId: string) {
           intensity: patch.intensity as Intensity | undefined,
           terrainBias: patch.terrainBias as TerrainBias | undefined,
           startPreset: patch.startPreset as StartPreset | undefined,
+          ftpWatts: patch.ftpWatts === undefined ? undefined : patch.ftpWatts,
         });
         if (patch.goalsText !== undefined) next.goalsText = patch.goalsText;
         setWizard(next);
@@ -206,14 +209,13 @@ export const cycleforgeAgent = chat
       return createTools(sessionId);
     },
     run: async ({ messages, tools: resolvedTools, signal, clientData }) => {
+      ensureRuntimeConfigLoaded();
       const sessionId = clientData?.sessionId ?? "default";
       getWizard(sessionId);
 
       return streamText({
         ...chat.toStreamTextOptions({ tools: resolvedTools }),
-        model: google(
-          process.env.GOOGLE_GENERATIVE_AI_MODEL || "gemini-flash-latest",
-        ),
+        model: getChatModel(),
         system: AGENT_SYSTEM_PROMPT,
         messages,
         abortSignal: signal,
