@@ -11,7 +11,8 @@ import { attachCoachNote } from "@/lib/coach-note";
 import { scoreRoute } from "@/lib/scoring";
 import { getSessionAthlete } from "@/lib/session-store";
 import { buildTips, comparisonFromRoutes } from "@/lib/tips";
-import { estimateTraining } from "@/lib/training";
+import { resolveBestLeave } from "@/lib/best-leave";
+import { buildEffortSegments, estimateTraining } from "@/lib/training";
 import { resolveWeather } from "@/lib/weather";
 import type { RouteCandidate, WizardState } from "@/lib/types";
 import { randomUUID } from "crypto";
@@ -59,6 +60,11 @@ export const scoreAndEnrichRoutesTask = schemaTask({
     } as WizardState;
     await upsertSession(w, w.goalsText);
     const weather = await resolveWeather(w.startLat, w.startLng);
+    const leaveWindow = await resolveBestLeave(
+      w.startLat,
+      w.startLng,
+      w.durationMin,
+    );
     const athleteId = getSessionAthlete(w.sessionId);
     const historyContext = athleteId
       ? ((await getHistoryContext(athleteId)) ?? undefined)
@@ -72,6 +78,7 @@ export const scoreAndEnrichRoutesTask = schemaTask({
         elevGainM: raw.elevGainM,
         intensity: w.intensity,
         terrainBias: w.terrainBias,
+        ftpWatts: w.ftpWatts,
       });
       const score = scoreRoute({
         wizard: w,
@@ -110,6 +117,7 @@ export const scoreAndEnrichRoutesTask = schemaTask({
         score,
         similarRideLabels,
         source: raw.source,
+        effortSegments: buildEffortSegments(raw.elevProfile),
       });
     }
 
@@ -125,6 +133,7 @@ export const scoreAndEnrichRoutesTask = schemaTask({
         routes,
         selectedRouteId: routes[0]?.routeId ?? "",
         historyContext,
+        leaveWindow,
         comparison: comparisonFromRoutes(routes),
       }),
       sqlRanking: ranked,

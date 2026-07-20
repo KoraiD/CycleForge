@@ -10,7 +10,15 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { ElevPoint } from "@/lib/types";
+import type { EffortSegment, ElevPoint } from "@/lib/types";
+
+const ZONE_FILL: Record<number, string> = {
+  1: "rgba(143, 179, 154, 0.28)",
+  2: "rgba(31, 107, 74, 0.18)",
+  3: "rgba(196, 160, 53, 0.28)",
+  4: "rgba(196, 92, 38, 0.32)",
+  5: "rgba(139, 46, 46, 0.35)",
+};
 
 function elevAtKm(profile: ElevPoint[], km: number): number | null {
   if (!profile.length) return null;
@@ -33,11 +41,13 @@ export function ElevationChart({
   accent = "#1f6b4a",
   hoverKm = null,
   onHoverKm,
+  effortSegments = [],
 }: {
   profile: ElevPoint[];
   accent?: string;
   hoverKm?: number | null;
   onHoverKm?: (km: number | null) => void;
+  effortSegments?: EffortSegment[];
 }) {
   if (!profile.length) {
     return (
@@ -73,6 +83,26 @@ export function ElevationChart({
       onPointerLeave={() => onHoverKm?.(null)}
       onMouseLeave={() => onHoverKm?.(null)}
     >
+      {effortSegments.length > 0 ? (
+        <div className="effort-overlay" aria-hidden>
+          {effortSegments.map((seg) => {
+            const left = ((seg.fromKm - minKm) / Math.max(maxKm - minKm, 0.01)) * 100;
+            const width =
+              ((seg.toKm - seg.fromKm) / Math.max(maxKm - minKm, 0.01)) * 100;
+            return (
+              <span
+                key={`${seg.fromKm}-${seg.toKm}-${seg.zone}`}
+                title={`${seg.label} · Z${seg.zone}`}
+                style={{
+                  left: `${Math.max(0, left)}%`,
+                  width: `${Math.max(1.5, width)}%`,
+                  background: ZONE_FILL[seg.zone],
+                }}
+              />
+            );
+          })}
+        </div>
+      ) : null}
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart
           data={profile}

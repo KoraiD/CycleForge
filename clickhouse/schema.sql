@@ -96,3 +96,16 @@ CREATE TABLE IF NOT EXISTS weather_forecast_grid (
   ingested_at DateTime64(3, 'UTC') DEFAULT now64(3)
 ) ENGINE = ReplacingMergeTree(ingested_at)
 ORDER BY (tile_lat, tile_lng, observed_at);
+
+-- Multi-day training microcycles written from the planner UI.
+CREATE TABLE IF NOT EXISTS training_blocks (
+  block_id String,
+  session_id String,
+  athlete_id String,
+  label String,
+  notes String,
+  total_target_tss Float64,
+  days_json String,
+  created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+) ENGINE = ReplacingMergeTree(created_at)
+ORDER BY (athlete_id, created_at, block_id);

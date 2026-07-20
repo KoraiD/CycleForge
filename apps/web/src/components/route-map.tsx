@@ -2,7 +2,13 @@
 
 import { LngLatBounds } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Map, { Layer, Marker, Source, type MapRef } from "react-map-gl/maplibre";
+import Map, {
+  Layer,
+  Marker,
+  NavigationControl,
+  Source,
+  type MapRef,
+} from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { ROUTE_COLORS } from "@/lib/constants";
 import { nearestKmAlongLine, pointAtKm } from "@/lib/geometry";
@@ -67,8 +73,9 @@ export function RouteMap({
 
   const start = selected ? endpoint(selected, "start") : null;
   const end = selected ? endpoint(selected, "end") : null;
-  const windDir = selected?.weather?.windDirDeg ?? 0;
-  const windKmh = selected?.weather?.windKmh ?? 0;
+  const weather = selected?.weather ?? null;
+  const windDir = weather?.windDirDeg ?? 0;
+  const windKmh = weather?.windKmh ?? 0;
 
   const hoverPoint = useMemo(() => {
     if (hoverKm === null || hoverKm === undefined || !selected) return null;
@@ -146,6 +153,7 @@ export function RouteMap({
         onMouseLeave={onMapMouseLeave}
         onLoad={fitAll}
       >
+        <NavigationControl position="bottom-right" showCompass={false} />
         {routes.map((route, index) => {
           const isSelected = route.routeId === selectedRouteId;
           const isPreview = route.routeId === previewRouteId;
@@ -233,18 +241,30 @@ export function RouteMap({
       </Map>
 
       <div className="map-chrome">
-        {windKmh > 0 && (
+        {weather ? (
           <div
-            className="wind-badge"
-            title={`Wind ${Math.round(windKmh)} km/h`}
-            style={{ ["--wind-rot" as string]: `${windDir}deg` }}
+            className="weather-badge"
+            title={`${weather.summary} · wind from ${Math.round(windDir)}°`}
           >
-            <span className="wind-badge__arrow" aria-hidden>
-              ↑
+            <span className="weather-badge__temp">
+              {Math.round(weather.tempC)}°
             </span>
-            <span>{Math.round(windKmh)} km/h</span>
+            <span className="weather-badge__meta">
+              {weather.summary}
+              {windKmh > 0 ? (
+                <span
+                  className="wind-inline"
+                  style={{ ["--wind-rot" as string]: `${windDir}deg` }}
+                >
+                  <span className="wind-badge__arrow" aria-hidden>
+                    ↑
+                  </span>
+                  {Math.round(windKmh)} km/h
+                </span>
+              ) : null}
+            </span>
           </div>
-        )}
+        ) : null}
         <button
           type="button"
           className="map-fit-btn"

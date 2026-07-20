@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { START_PRESETS } from "@/lib/constants";
+import type { NearbyStart } from "@/lib/nearby-starts";
 import type { GeocodeHit } from "@/lib/geocode";
-import type { Intensity, StartPreset, TerrainBias, WizardState } from "@/lib/types";
+import type { Intensity, TerrainBias, WizardState } from "@/lib/types";
 import { StartPickerMap } from "./start-picker-map";
 
 const INTENSITIES: Intensity[] = ["easy", "endurance", "tempo", "hills"];
 const TERRAINS: TerrainBias[] = ["flat", "rolling", "hilly"];
-const PRESETS = Object.keys(START_PRESETS) as Array<Exclude<StartPreset, "custom">>;
 
 export function Wizard({
   wizard,
@@ -16,20 +15,27 @@ export function Wizard({
   onConfirm,
   busy,
   collapsed = false,
+  hasPlan = false,
 }: {
   wizard: WizardState;
   onChange: (patch: Partial<WizardState>) => void;
   onConfirm: () => void;
   busy?: boolean;
-  /** When a plan is already on screen, keep wizard compact so tweak panel owns refine. */
   collapsed?: boolean;
+  hasPlan?: boolean;
 }) {
   const [address, setAddress] = useState("");
   const [hits, setHits] = useState<GeocodeHit[]>([]);
   const [searching, setSearching] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const showCustom = wizard.startPreset === "custom";
+  const [startHint, setStartHint] = useState<string | null>(null);
+  const [nearby, setNearby] = useState<NearbyStart[]>([]);
+  const [nearbyLoading, setNearbyLoading] = useState(false);
   const showBody = !collapsed || expanded;
+  const startPicked =
+    wizard.startLabel &&
+    wizard.startLabel !== "Pick a start on the map" &&
+    !wizard.startLabel.startsWith("Pick a start");
 
   useEffect(() => {
     const q = address.trim();
@@ -55,9 +61,46 @@ export function Wizard({
     };
   }, [address]);
 
+  useEffect(() => {
+    if (!startPicked) return;
+    let cancelled = false;
+    const handle = window.setTimeout(() => {
+      setNearbyLoading(true);
+      void fetch(
+        `/api/nearby-starts?lat=${wizard.startLat}&lng=${wizard.startLng}`,
+      )
+        .then((r) => r.json())
+        .then((data: { results?: NearbyStart[] }) => {
+          if (!cancelled) setNearby(data.results ?? []);
+        })
+        .catch(() => {
+          if (!cancelled) setNearby([]);
+        })
+        .finally(() => {
+          if (!cancelled) setNearbyLoading(false);
+        });
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [startPicked, wizard.startLat, wizard.startLng]);
+
+  const nearbyChips = startPicked ? nearby : [];
+
   const onAddressChange = (value: string) => {
     setAddress(value);
     if (value.trim().length < 2) setHits([]);
+  };
+
+  const applyStart = (lat: number, lng: number, label: string, hint: string) => {
+    onChange({
+      startPreset: "custom",
+      startLat: lat,
+      startLng: lng,
+      startLabel: label,
+    });
+    setStartHint(hint);
   };
 
   if (!showBody) {
@@ -70,6 +113,7 @@ export function Wizard({
         <p className="wizard-summary">
           {wizard.durationMin} min · {wizard.intensity} · {wizard.terrainBias} ·{" "}
           {wizard.startLabel || "Custom start"}
+          {wizard.ftpWatts ? ` · FTP ${wizard.ftpWatts} W` : ""}
         </p>
         <p className="wizard-hint">
           Use <strong>Tune this result</strong> on the plan to regenerate. Expand
@@ -118,6 +162,29 @@ export function Wizard({
         <strong>{wizard.durationMin} min</strong>
       </label>
 
+      <label className="field">
+        <span>FTP (watts) — optional, improves TSS</span>
+        <input
+          type="number"
+          min={80}
+          max={500}
+          step={5}
+          placeholder="e.g. 240"
+          value={wizard.ftpWatts ?? ""}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === "") {
+              onChange({ ftpWatts: null });
+              return;
+            }
+            const n = Number(v);
+            onChange({
+              ftpWatts: Number.isFinite(n) && n > 0 ? Math.max(80, n) : null,
+            });
+          }}
+        />
+      </label>
+
       <div className="chip-row">
         <span className="chip-label">Intensity</span>
         {INTENSITIES.map((value) => (
@@ -148,94 +215,88 @@ export function Wizard({
 
       <div className="chip-row">
         <span className="chip-label">Start</span>
-        {PRESETS.map((value) => (
-          <button
-            key={value}
-            type="button"
-            className={wizard.startPreset === value ? "chip active" : "chip"}
-            onClick={() =>
-              onChange({
-                startPreset: value,
-                startLabel: START_PRESETS[value].label,
-              })
-            }
-          >
-            {START_PRESETS[value].label}
-          </button>
-        ))}
-        <button
-          type="button"
-          className={wizard.startPreset === "custom" ? "chip active" : "chip"}
-          onClick={() =>
-            onChange({
-              startPreset: "custom",
-              startLabel: wizard.startLabel || "Custom start",
-            })
-          }
-        >
+        <button type="button" className="chip active">
           Map / address
         </button>
+        {nearbyLoading && startPicked ? (
+          <span className="start-search-status">Finding nearby starts…</span>
+        ) : null}
+        {nearbyChips.map((n) => (
+          <button
+            key={`${n.label}-${n.lat}`}
+            type="button"
+            className={
+              wizard.startLabel === n.label ? "chip active" : "chip"
+            }
+            onClick={() =>
+              applyStart(
+                n.lat,
+                n.lng,
+                n.label,
+                `Start set to ${n.label} (${n.distanceKm} km away). Generate routes to rebuild.`,
+              )
+            }
+            title={`${n.distanceKm} km from pin`}
+          >
+            {n.label}
+          </button>
+        ))}
       </div>
 
-      {showCustom && (
-        <div className="start-custom">
-          <label className="field">
-            <span>Search address</span>
-            <input
-              type="search"
-              value={address}
-              placeholder="e.g. Utrecht Centraal or Berlin Prenzlauer Berg"
-              onChange={(e) => onAddressChange(e.target.value)}
-            />
-          </label>
-          {searching && <p className="start-search-status">Searching…</p>}
-          {hits.length > 0 && (
-            <ul className="geocode-hits">
-              {hits.map((hit) => (
-                <li key={`${hit.label}-${hit.lat}-${hit.lng}`}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onChange({
-                        startPreset: "custom",
-                        startLat: hit.lat,
-                        startLng: hit.lng,
-                        startLabel: hit.label,
-                      });
-                      setAddress(hit.label);
-                      setHits([]);
-                    }}
-                  >
-                    {hit.label}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <StartPickerMap
-            lat={wizard.startLat}
-            lng={wizard.startLng}
-            onPick={({ lat, lng }) =>
-              onChange({
-                startPreset: "custom",
-                startLat: lat,
-                startLng: lng,
-                startLabel: `Pin ${lat.toFixed(4)}, ${lng.toFixed(4)}`,
-              })
-            }
-          />
-          <p className="start-current">
-            Start: <strong>{wizard.startLabel || "Custom"}</strong> (
-            {wizard.startLat.toFixed(4)}, {wizard.startLng.toFixed(4)})
-          </p>
-        </div>
-      )}
+      {startHint ? <p className="start-hint">{startHint}</p> : null}
 
-      {!showCustom && (
+      <div className="start-custom">
+        <label className="field">
+          <span>Search address</span>
+          <input
+            type="search"
+            value={address}
+            placeholder="e.g. Utrecht Centraal or Berlin Prenzlauer Berg"
+            onChange={(e) => onAddressChange(e.target.value)}
+            autoComplete="off"
+          />
+        </label>
+        {searching && <p className="start-search-status">Searching…</p>}
+        {hits.length > 0 && (
+          <ul className="geocode-hits">
+            {hits.map((hit) => (
+              <li key={`${hit.label}-${hit.lat}-${hit.lng}`}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    applyStart(
+                      hit.lat,
+                      hit.lng,
+                      hit.label,
+                      `Start pinned to ${hit.label}. Nearby options will appear above.`,
+                    );
+                    setAddress(hit.label);
+                    setHits([]);
+                  }}
+                >
+                  {hit.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <StartPickerMap
+          lat={wizard.startLat}
+          lng={wizard.startLng}
+          onPick={({ lat, lng }) => {
+            applyStart(
+              lat,
+              lng,
+              `Pin ${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+              `Start updated to ${lat.toFixed(4)}, ${lng.toFixed(4)}. Nearby options refresh above.`,
+            );
+          }}
+        />
         <p className="start-current">
-          Start: <strong>{wizard.startLabel || START_PRESETS.vondelpark.label}</strong>
+          Start: <strong>{wizard.startLabel || "Custom"}</strong> (
+          {wizard.startLat.toFixed(4)}, {wizard.startLng.toFixed(4)})
         </p>
-      )}
+      </div>
 
       <label className="check">
         <input
@@ -249,10 +310,16 @@ export function Wizard({
       <button
         type="button"
         className="primary"
-        disabled={busy}
+        disabled={busy || !startPicked}
         onClick={onConfirm}
       >
-        {busy ? "Generating…" : "Generate routes"}
+        {busy
+          ? "Generating…"
+          : !startPicked
+            ? "Pick a start first"
+            : hasPlan
+              ? "Regenerate from this start"
+              : "Generate routes"}
       </button>
     </section>
   );
