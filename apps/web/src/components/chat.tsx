@@ -8,13 +8,26 @@ import {
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   generateDemoPlan,
+  getPlanAction,
+  getSessionHistoryAction,
+  loadDemoAthleteAction,
   mintChatAccessToken,
+  selectRouteAction,
   startChatSession,
   updateWizardAction,
 } from "@/app/actions";
 import type { cycleforgeAgent } from "@/trigger/cycleforge-agent";
-import { DEFAULT_WIZARD, type PlanPayload, type WizardState } from "@/lib/types";
-import { PlanPanel } from "./plan-panel";
+import { getOrCreateBrowserSessionId } from "@/lib/browser-session";
+import { attachCoachNote } from "@/lib/coach-note";
+import { START_PRESETS } from "@/lib/constants";
+import {
+  DEFAULT_WIZARD,
+  type HistoryContext,
+  type PlanPayload,
+  type WizardState,
+} from "@/lib/types";
+import { BrandMark } from "./brand-mark";
+import { PlanPanel, type PlanTweak } from "./plan-panel";
 import { Wizard } from "./wizard";
 
 type Msg = InferChatUIMessage<typeof cycleforgeAgent>;
@@ -64,10 +77,32 @@ function extractFromMessages(messages: Msg[]): {
   return { plan, wizard, toolError, activities };
 }
 
+const TOOL_LABELS: Record<string, string> = {
+  upsert_wizard_state: "Updating goals",
+  load_demo_athlete: "Loading athlete",
+  generate_route_candidates: "Building routes",
+  refine_plan: "Refining plan",
+  select_route: "Selecting route",
+  score_and_enrich_routes: "Scoring in ClickHouse",
+};
+
+function toolProgressChips(activities: ToolActivity[]): string[] {
+  const seen = new Set<string>();
+  const chips: string[] = [];
+  for (const a of activities) {
+    const label = TOOL_LABELS[a.name] ?? a.name.replaceAll("_", " ");
+    if (seen.has(label)) continue;
+    seen.add(label);
+    chips.push(label);
+  }
+  return chips;
+}
+
 function generatingSteps(activities: ToolActivity[]): string[] {
   const names = new Set(activities.map((a) => a.name));
   const steps = ["Reading goals"];
   if (names.has("upsert_wizard_state")) steps.push("Updating wizard");
+  if (names.has("load_demo_athlete")) steps.push("Loading athlete history");
   if (
     names.has("generate_route_candidates") ||
     names.has("refine_plan")
@@ -80,13 +115,15 @@ function generatingSteps(activities: ToolActivity[]): string[] {
 }
 
 export function Chat() {
-  const [sessionId] = useState(() => crypto.randomUUID());
+  const [sessionId] = useState(() => getOrCreateBrowserSessionId());
   const [input, setInput] = useState("");
   const [localWizard, setLocalWizard] = useState<WizardState>(() =>
     DEFAULT_WIZARD(sessionId),
   );
   const [wizardDirty, setWizardDirty] = useState(false);
   const [demoPlan, setDemoPlan] = useState<PlanPayload | null>(null);
+  const [history, setHistory] = useState<HistoryContext | null>(null);
+  const [hydrated, setHydrated] = useState(false);
   const [agentConfigured, setAgentConfigured] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -115,6 +152,31 @@ export function Chat() {
     };
   }, []);
 
+  // Restore plan/history after navigating back from /summary.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [storedPlan, storedHistory] = await Promise.all([
+          getPlanAction(sessionId),
+          getSessionHistoryAction(sessionId),
+        ]);
+        if (cancelled) return;
+        if (storedPlan) {
+          setDemoPlan(storedPlan);
+          setLocalWizard(storedPlan.wizard);
+          setWizardDirty(true);
+        }
+        if (storedHistory) setHistory(storedHistory);
+      } finally {
+        if (!cancelled) setHydrated(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
+
   const transport = useTriggerChatTransport<typeof cycleforgeAgent>({
     task: "cycleforge-agent",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
@@ -129,7 +191,11 @@ export function Chat() {
 
   const agentEnabled = agentConfigured && !error;
   const extracted = useMemo(() => extractFromMessages(messages), [messages]);
-  const plan = demoPlan ?? extracted.plan;
+  const rawPlan = demoPlan ?? extracted.plan;
+  const plan =
+    rawPlan && history
+      ? { ...rawPlan, historyContext: rawPlan.historyContext ?? history }
+      : rawPlan;
   const wizard =
     !wizardDirty && extracted.wizard ? extracted.wizard : localWizard;
 
@@ -153,14 +219,10 @@ export function Chat() {
       const base = !wizardDirty && extracted.wizard ? extracted.wizard : prev;
       const next = { ...base, ...patch };
       if (patch.startPreset && patch.startPreset !== "custom") {
-        const presets = {
-          centraal: { lat: 52.378, lng: 4.8985 },
-          vondelpark: { lat: 52.3577, lng: 4.8686 },
-          amstel: { lat: 52.3462, lng: 4.9179 },
-        } as const;
-        const p = presets[patch.startPreset];
+        const p = START_PRESETS[patch.startPreset];
         next.startLat = p.lat;
         next.startLng = p.lng;
+        next.startLabel = patch.startLabel ?? p.label;
       }
       return next;
     });
@@ -176,7 +238,7 @@ export function Chat() {
       setLocalWizard(confirmed);
       setWizardDirty(true);
       if (agentEnabled) {
-        const prompt = `Confirm wizard and generate routes. durationMin=${confirmed.durationMin}, intensity=${confirmed.intensity}, terrainBias=${confirmed.terrainBias}, startPreset=${confirmed.startPreset}, avoidBusyRoads=${confirmed.avoidBusyRoads}. Goals: ${confirmed.goalsText || "endurance ride near Amsterdam"}`;
+        const prompt = `Confirm wizard and generate routes. durationMin=${confirmed.durationMin}, intensity=${confirmed.intensity}, terrainBias=${confirmed.terrainBias}, startPreset=${confirmed.startPreset}, startLabel=${confirmed.startLabel}, startLat=${confirmed.startLat}, startLng=${confirmed.startLng}, avoidBusyRoads=${confirmed.avoidBusyRoads}. Goals: ${confirmed.goalsText || "endurance ride"}`;
         try {
           await sendMessage({ text: prompt });
           return;
@@ -197,37 +259,29 @@ export function Chat() {
 
   const onSelectRoute = (routeId: string) => {
     if (demoPlan) {
-      setDemoPlan({ ...demoPlan, selectedRouteId: routeId });
+      setDemoPlan(attachCoachNote({ ...demoPlan, selectedRouteId: routeId }));
     }
+    startTransition(async () => {
+      await selectRouteAction(sessionId, routeId);
+    });
     if (agentEnabled) {
       void sendMessage({ text: `Select route ${routeId}` });
     }
   };
 
-  const onRefine = (kind: "shorter" | "hillier" | "easier") => {
+  const regenerateWithPatch = (
+    patch: Partial<WizardState>,
+    agentPrompt?: string,
+  ) => {
     setLocalError(null);
-    const patch: Partial<WizardState> =
-      kind === "shorter"
-        ? { durationMin: Math.max(30, wizard.durationMin - 20) }
-        : kind === "hillier"
-          ? { terrainBias: "hilly", intensity: "hills" }
-          : { intensity: "easy", terrainBias: "flat" };
-
     const nextWizard = { ...wizard, ...patch, confirmed: true };
     setLocalWizard(nextWizard);
     setWizardDirty(true);
 
     startTransition(async () => {
-      if (agentEnabled) {
+      if (agentEnabled && agentPrompt) {
         try {
-          await sendMessage({
-            text:
-              kind === "shorter"
-                ? "Make it shorter — about 20 minutes less."
-                : kind === "hillier"
-                  ? "Make it hillier — more climbing."
-                  : "Make it easier — flatter and recovery pace.",
-          });
+          await sendMessage({ text: agentPrompt });
           return;
         } catch {
           setAgentConfigured(false);
@@ -238,8 +292,57 @@ export function Chat() {
         setDemoPlan(built);
         setLocalWizard(built.wizard);
       } catch (err) {
+        setLocalError(err instanceof Error ? err.message : "Refine failed.");
+      }
+    });
+  };
+
+  const onRefine = (kind: "shorter" | "hillier" | "easier") => {
+    const patch: Partial<WizardState> =
+      kind === "shorter"
+        ? { durationMin: Math.max(30, wizard.durationMin - 20) }
+        : kind === "hillier"
+          ? { terrainBias: "hilly", intensity: "hills" }
+          : { intensity: "easy", terrainBias: "flat" };
+    const prompt =
+      kind === "shorter"
+        ? "Make it shorter — about 20 minutes less."
+        : kind === "hillier"
+          ? "Make it hillier — more climbing."
+          : "Make it easier — flatter and recovery pace.";
+    regenerateWithPatch(patch, prompt);
+  };
+
+  const onApplyTweaks = (tweak: PlanTweak) => {
+    const { preset: _preset, ...patch } = tweak;
+    regenerateWithPatch(
+      patch,
+      `Regenerate with durationMin=${patch.durationMin ?? wizard.durationMin}, intensity=${patch.intensity ?? wizard.intensity}, terrainBias=${patch.terrainBias ?? wizard.terrainBias}, avoidBusyRoads=${patch.avoidBusyRoads ?? wizard.avoidBusyRoads}.`,
+    );
+  };
+
+  const loadDemoAthlete = () => {
+    setLocalError(null);
+    startTransition(async () => {
+      try {
+        const result = await loadDemoAthleteAction(sessionId);
+        setHistory(result.history);
+        setLocalWizard(result.wizard);
+        setWizardDirty(true);
+        if (demoPlan) {
+          setDemoPlan(
+            attachCoachNote({
+              ...demoPlan,
+              historyContext: result.history,
+              wizard: result.wizard,
+            }),
+          );
+        }
+      } catch (err) {
         setLocalError(
-          err instanceof Error ? err.message : "Refine failed.",
+          err instanceof Error
+            ? err.message
+            : "Could not load demo athlete history.",
         );
       }
     });
@@ -289,46 +392,98 @@ export function Chat() {
     extracted.wizard || localWizard.goalsText || demoPlan,
   );
   const steps = generatingSteps(extracted.activities);
+  const progressChips = useMemo(
+    () => toolProgressChips(extracted.activities),
+    [extracted.activities],
+  );
 
   return (
     <div className="shell">
       <aside className="chat-pane">
         <header className="chat-pane__header">
-          <p className="brand">CycleForge</p>
+          <BrandMark withWordmark size={32} />
           <p className="tagline">Visual training plans — not walls of text</p>
         </header>
 
         <div className="messages">
-          {messages.length === 0 && !demoPlan && (
+          {hydrated && messages.length === 0 && !demoPlan && (
             <div className="empty">
               <p>
                 Tell me a training goal or trip idea. I&apos;ll open a wizard,
                 then put routes on a map with elevation and training effect.
               </p>
-              <button type="button" className="ghost" onClick={runQuickDemo}>
-                Try the demo prompt
-              </button>
+              <div className="empty-actions">
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={runQuickDemo}
+                  disabled={busy}
+                >
+                  Try the demo prompt
+                </button>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={loadDemoAthlete}
+                  disabled={busy || Boolean(history)}
+                >
+                  {history ? "Demo athlete loaded" : "Load demo athlete history"}
+                </button>
+              </div>
             </div>
           )}
 
-          {messages.map((m) => (
-            <div key={m.id} className={`bubble bubble--${m.role}`}>
-              {m.parts.map((part, i) => {
-                if (part.type === "text" && part.text.trim()) {
-                  return <p key={i}>{part.text}</p>;
-                }
-                if (part.type.startsWith("tool-")) {
-                  const name = part.type.replace("tool-", "");
-                  return (
-                    <p key={i} className="tool-note">
-                      {name.replaceAll("_", " ")}
-                    </p>
-                  );
-                }
-                return null;
-              })}
+          {history && (
+            <p className="history-chip" title={history.summaryLine}>
+              Athlete · {history.hoursLast7d}h / TSS {history.tssLast7d} last 7d
+              {history.lastHardLabel
+                ? ` · hard ${history.lastHardDaysAgo}d ago`
+                : ""}
+            </p>
+          )}
+
+          {!history && (showWizard || demoPlan) && (
+            <button
+              type="button"
+              className="ghost history-load"
+              onClick={loadDemoAthlete}
+              disabled={busy}
+            >
+              Load demo athlete history
+            </button>
+          )}
+
+          {busy && (
+            <div className="status-banner" role="status">
+              <p>Working — routes and scores update when ready.</p>
+              {progressChips.length > 0 ? (
+                <ul className="tool-progress" aria-label="Agent progress">
+                  {progressChips.map((label, i) => (
+                    <li
+                      key={label}
+                      className={i === progressChips.length - 1 ? "active" : "done"}
+                    >
+                      {label}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
-          ))}
+          )}
+
+          {messages.map((m) => {
+            const textParts = m.parts.filter(
+              (part) => part.type === "text" && part.text.trim(),
+            );
+            if (textParts.length === 0) return null;
+            return (
+              <div key={m.id} className={`bubble bubble--${m.role}`}>
+                {textParts.map((part, i) =>
+                  part.type === "text" ? <p key={i}>{part.text}</p> : null,
+                )}
+              </div>
+            );
+          })}
 
           {showWizard && (
             <Wizard
@@ -336,6 +491,7 @@ export function Chat() {
               onChange={onWizardChange}
               onConfirm={onConfirmWizard}
               busy={busy}
+              collapsed={Boolean(plan)}
             />
           )}
 
@@ -381,9 +537,14 @@ export function Chat() {
             onChange={(e) => setInput(e.target.value)}
             placeholder="e.g. 90 min endurance near Vondelpark…"
             disabled={busy}
+            aria-label="Training goal or refine request"
           />
-          <button type="submit" className="primary" disabled={busy}>
-            Send
+          <button
+            type="submit"
+            className="primary"
+            disabled={busy || !input.trim()}
+          >
+            {busy ? "…" : "Send"}
           </button>
         </form>
 
@@ -397,16 +558,22 @@ export function Chat() {
 
       <main className="visual-pane">
         {plan ? (
-          <PlanPanel
-            key={`${plan.sessionId}-${plan.routes.map((r) => r.routeId).join("-")}`}
-            plan={plan}
-            onSelectRoute={onSelectRoute}
-            onRefine={onRefine}
-            refining={busy}
-          />
+          <div
+            className={busy ? "plan-refining" : undefined}
+            aria-busy={busy}
+          >
+            <PlanPanel
+              key={`${plan.sessionId}-${plan.routes.map((r) => r.routeId).join("-")}-${plan.historyContext?.athleteId ?? "none"}`}
+              plan={plan}
+              onSelectRoute={onSelectRoute}
+              onRefine={onRefine}
+              onApplyTweaks={onApplyTweaks}
+              refining={busy}
+            />
+          </div>
         ) : busy ? (
           <div className="visual-generating" aria-live="polite">
-            <p className="brand">CycleForge</p>
+            <BrandMark withWordmark size={36} />
             <h1>Generating routes…</h1>
             <p>Durable Trigger tasks are fanning out ORS and scoring.</p>
             <ol className="gen-steps">
@@ -419,7 +586,7 @@ export function Chat() {
           </div>
         ) : displayError ? (
           <div className="visual-empty visual-empty--error">
-            <p className="brand">CycleForge</p>
+            <BrandMark withWordmark size={36} />
             <h1>Couldn&apos;t build the plan</h1>
             <p>{displayError}</p>
             <button type="button" className="ghost" onClick={runQuickDemo}>
@@ -428,7 +595,7 @@ export function Chat() {
           </div>
         ) : (
           <div className="visual-empty">
-            <p className="brand">CycleForge</p>
+            <BrandMark withWordmark size={40} />
             <h1>Your ride appears here</h1>
             <p>
               Map, elevation, and training effect stream in as the agent builds

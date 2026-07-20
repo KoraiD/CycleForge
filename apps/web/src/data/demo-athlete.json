@@ -1,0 +1,22 @@
+{
+  "athleteId": "demo-ams-rider",
+  "label": "Demo AMS rider",
+  "source": "fixture",
+  "notes": "Synthetic 3-week Amsterdam training block for hackathon demo — not a live OAuth import.",
+  "rides": [
+    { "rideId": "da-01", "daysAgo": 1, "label": "Vondel recovery spin", "distanceM": 18000, "durationS": 2700, "elevGainM": 22, "tssEst": 28, "intensity": "easy" },
+    { "rideId": "da-02", "daysAgo": 2, "label": "Amstel endurance 40k", "distanceM": 40200, "durationS": 5400, "elevGainM": 48, "tssEst": 78, "intensity": "endurance" },
+    { "rideId": "da-03", "daysAgo": 4, "label": "Bosbaan tempo blocks", "distanceM": 34000, "durationS": 4500, "elevGainM": 55, "tssEst": 102, "intensity": "tempo" },
+    { "rideId": "da-04", "daysAgo": 5, "label": "Sloterplas easy", "distanceM": 16000, "durationS": 2400, "elevGainM": 18, "tssEst": 24, "intensity": "easy" },
+    { "rideId": "da-05", "daysAgo": 7, "label": "Waterland long Sunday", "distanceM": 65000, "durationS": 9600, "elevGainM": 190, "tssEst": 145, "intensity": "hills" },
+    { "rideId": "da-06", "daysAgo": 8, "label": "Ouderkerk steady", "distanceM": 42000, "durationS": 5700, "elevGainM": 70, "tssEst": 82, "intensity": "endurance" },
+    { "rideId": "da-07", "daysAgo": 9, "label": "City coffee spin", "distanceM": 14000, "durationS": 2100, "elevGainM": 15, "tssEst": 22, "intensity": "easy" },
+    { "rideId": "da-08", "daysAgo": 11, "label": "Diemen parkways", "distanceM": 36000, "durationS": 4800, "elevGainM": 50, "tssEst": 70, "intensity": "endurance" },
+    { "rideId": "da-09", "daysAgo": 12, "label": "Amsterdamse Bos intervals", "distanceM": 28000, "durationS": 3900, "elevGainM": 40, "tssEst": 95, "intensity": "tempo" },
+    { "rideId": "da-10", "daysAgo": 14, "label": "Marken peninsula day", "distanceM": 72000, "durationS": 10800, "elevGainM": 210, "tssEst": 155, "intensity": "hills" },
+    { "rideId": "da-11", "daysAgo": 15, "label": "IJ tunnel out-n-back", "distanceM": 26000, "durationS": 3600, "elevGainM": 30, "tssEst": 50, "intensity": "endurance" },
+    { "rideId": "da-12", "daysAgo": 16, "label": "Twiske nature loop", "distanceM": 44000, "durationS": 6000, "elevGainM": 75, "tssEst": 88, "intensity": "endurance" },
+    { "rideId": "da-13", "daysAgo": 18, "label": "Zaandam windmills", "distanceM": 48000, "durationS": 6600, "elevGainM": 88, "tssEst": 92, "intensity": "endurance" },
+    { "rideId": "da-14", "daysAgo": 20, "label": "Het Gooi climb day", "distanceM": 78000, "durationS": 12000, "elevGainM": 480, "tssEst": 170, "intensity": "hills" }
+  ]
+}

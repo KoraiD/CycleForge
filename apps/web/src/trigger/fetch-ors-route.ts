@@ -13,6 +13,7 @@ const wizardSchema = z.object({
   startPreset: z.enum(["centraal", "vondelpark", "amstel", "custom"]),
   startLat: z.number(),
   startLng: z.number(),
+  startLabel: z.string().optional(),
   avoidBusyRoads: z.boolean(),
   confirmed: z.boolean(),
 });

@@ -3,6 +3,8 @@ import {
   buildElevProfile,
   elevGainLoss,
   lineDistanceM,
+  nearestKmAlongLine,
+  pointAtKm,
   syntheticLoop,
 } from "./geometry";
 
@@ -35,6 +37,20 @@ describe("geometry", () => {
     expect(profile[0]).toEqual({ km: 0, elevM: expect.any(Number) });
     expect(profile.length).toBeGreaterThan(5);
     expect(profile.at(-1)?.km).toBeGreaterThan(10);
+  });
+
+  it("projects a nearby point onto the line as km", () => {
+    const coords = [
+      [4.9, 52.37],
+      [4.91, 52.37],
+      [4.92, 52.37],
+    ];
+    const mid = nearestKmAlongLine(coords, 4.91, 52.37005);
+    expect(mid).not.toBeNull();
+    expect(mid!).toBeGreaterThan(0.3);
+    expect(mid!).toBeLessThan(1.2);
+    const pt = pointAtKm(coords, mid!);
+    expect(pt?.[0]).toBeCloseTo(4.91, 2);
   });
 
   it("closes a synthetic loop near the start point", () => {

@@ -47,13 +47,18 @@ Never commit `.env.local`.
 cd apps/web
 npm install
 npm run seed:clickhouse
+npm run ingest:weather   # Open-Meteo → weather_forecast_grid (Amsterdam tiles)
 ```
 
 Seed loads `.env.local` automatically and applies:
 
-- Tables: `plan_sessions`, `routes`, `route_scores`
+- Tables: `plan_sessions`, `routes`, `route_scores`, `weather_forecast_grid`, `rider_history_rides`
 - View: `route_scores_ranked` (SQL recomputed totals)
 - ~20 seed rides for “similar past rides”
+- Demo athlete fixture (`demo-ams-rider`, ~3 weeks) into `rider_history_rides`
+- Weather grid ingest (also available as Trigger task `ingest-weather-grid`, schedule every 6h)
+
+In the UI: **Load demo athlete history** (or agent tool `load_demo_athlete`) before generating routes to attach load-aware coaching.
 
 Re-run seed anytime after schema changes.
 
@@ -101,16 +106,18 @@ If `triggerConfigured` or `googleConfigured` is false, the UI shows **local demo
 ## 5. Manual UI walkthrough
 
 1. Open [http://localhost:3000](http://localhost:3000).
-2. Click **Try the demo prompt** (or paste your own goal).
-3. Watch the visual pane show **Generating routes…** while tools run.
-4. Confirm the **Plan Panel**: map, 3 candidates, elevation, TSS, tips.
-5. Click another route candidate — KPIs / elevation update.
-6. Use refine chips: **Shorter** / **Hillier** / **Easier**.
-7. Optional: adjust the in-chat **wizard**, then **Generate routes**.
+2. Optional: **Load demo athlete history** (CH fixture → coach note).
+3. Click **Try the demo prompt** (or paste your own goal).
+4. Confirm the **Plan Panel**: map, 3 candidates, elevation, TSS, coach note, tips.
+5. Click / hover routes — KPIs, elevation sync, and preview highlight update.
+6. Use **Tune this result** (or Shorter / Hillier / Easier) and **Apply & regenerate**.
+7. **Download GPX** and **Open summary** (print / copy link).
 
 Demo prompt:
 
 > I have 90 minutes tomorrow morning near Amsterdam — endurance ride, some hills if possible, avoid busy roads.
+
+Submit / video checklist: **[SUBMIT.md](SUBMIT.md)**.
 
 ---
 
@@ -177,6 +184,26 @@ ORDER BY created_at DESC
 LIMIT 10;
 ```
 
+**Nearest weather tile (pipeline join demo):**
+
+```sql
+SELECT tile_id, tile_lat, tile_lng, temp_c, wind_kmh, precip_mm, summary, observed_at
+FROM weather_forecast_grid
+WHERE abs(tile_lat - 52.36) <= 0.15 AND abs(tile_lng - 4.87) <= 0.15
+ORDER BY (abs(tile_lat - 52.36) + abs(tile_lng - 4.87)) ASC, observed_at DESC
+LIMIT 5;
+```
+
+**Demo athlete history:**
+
+```sql
+SELECT label, intensity, tss_est, distance_m, started_at
+FROM rider_history_rides
+WHERE athlete_id = 'demo-ams-rider'
+ORDER BY started_at DESC
+LIMIT 14;
+```
+
 Weights for `total_sql` match `apps/web/src/lib/scoring.ts`:
 
 `goal_fit×0.45 + safety_proxy×0.2 + scenic_proxy×0.15 + weather_fit×0.2`
@@ -200,6 +227,18 @@ cycleforge-agent
 ```
 
 The three `fetch-ors-route` children are launched with `batchTriggerAndWait` (parallel fan-out).
+
+Full narration + ClickHouse SQL for the video: **[SUBMIT.md](SUBMIT.md)** (§B5 / B5b).
+
+### Deploy to Trigger Cloud (optional backup)
+
+```bash
+cd apps/web
+npm run deploy:trigger:dry   # preview
+npm run deploy:trigger       # prod deploy (requires login + env vars in dashboard)
+```
+
+Set the same `GOOGLE_*`, `CLICKHOUSE_*`, and `ORS_API_KEY` values in the Trigger project environment. Details: [`SUBMIT.md`](SUBMIT.md) §B1.
 
 ---
 

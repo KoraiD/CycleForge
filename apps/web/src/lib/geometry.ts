@@ -26,6 +26,66 @@ export function lineDistanceM(coords: number[][]): number {
   return total;
 }
 
+/** Project a lon/lat onto the polyline; return distance along line in km. */
+export function nearestKmAlongLine(
+  coords: number[][],
+  lng: number,
+  lat: number,
+): number | null {
+  if (coords.length < 2) return null;
+  let bestDist = Infinity;
+  let bestAlongM = 0;
+  let alongM = 0;
+
+  for (let i = 1; i < coords.length; i++) {
+    const [lng1, lat1] = coords[i - 1];
+    const [lng2, lat2] = coords[i];
+    const segM = haversineM(lng1, lat1, lng2, lat2);
+    if (segM < 1e-3) continue;
+
+    // Local equirectangular projection for segment clamp.
+    const x = (lng - lng1) * Math.cos((lat1 * Math.PI) / 180);
+    const y = lat - lat1;
+    const dx = (lng2 - lng1) * Math.cos((lat1 * Math.PI) / 180);
+    const dy = lat2 - lat1;
+    const t = Math.max(0, Math.min(1, (x * dx + y * dy) / (dx * dx + dy * dy)));
+    const projLng = lng1 + t * (lng2 - lng1);
+    const projLat = lat1 + t * (lat2 - lat1);
+    const d = haversineM(lng, lat, projLng, projLat);
+    if (d < bestDist) {
+      bestDist = d;
+      bestAlongM = alongM + t * segM;
+    }
+    alongM += segM;
+  }
+
+  if (bestDist > 400) return null;
+  return Math.round((bestAlongM / 1000) * 100) / 100;
+}
+
+/** Lon/lat at a distance along the line (km). */
+export function pointAtKm(
+  coords: number[][],
+  km: number,
+): [number, number] | null {
+  if (!coords.length) return null;
+  if (km <= 0) return [coords[0][0], coords[0][1]];
+  const targetM = km * 1000;
+  let alongM = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const [lng1, lat1] = coords[i - 1];
+    const [lng2, lat2] = coords[i];
+    const segM = haversineM(lng1, lat1, lng2, lat2);
+    if (alongM + segM >= targetM) {
+      const t = segM < 1e-3 ? 0 : (targetM - alongM) / segM;
+      return [lng1 + t * (lng2 - lng1), lat1 + t * (lat2 - lat1)];
+    }
+    alongM += segM;
+  }
+  const last = coords[coords.length - 1];
+  return [last[0], last[1]];
+}
+
 export function elevGainLoss(coords: number[][]): { gain: number; loss: number } {
   let gain = 0;
   let loss = 0;
