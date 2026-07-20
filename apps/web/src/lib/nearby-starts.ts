@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from "./fetch-timeout";
+
 export type NearbyStart = {
   label: string;
   lat: number;
@@ -48,13 +50,17 @@ function offsetPoint(
 
 async function nominatimJson<T>(url: string): Promise<T | null> {
   try {
-    const res = await fetch(url, {
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "CycleForge/1.0 (hackathon; nearby starts)",
+    const res = await fetchWithTimeout(
+      url,
+      {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "CycleForge/1.0 (hackathon; nearby starts)",
+        },
+        cache: "no-store",
       },
-      cache: "no-store",
-    });
+      8000,
+    );
     if (!res.ok) return null;
     return (await res.json()) as T;
   } catch {
