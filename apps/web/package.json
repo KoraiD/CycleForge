@@ -15,7 +15,9 @@
     "test:coverage": "vitest run --coverage",
     "check": "npm run lint && npm run typecheck && npm run test",
     "seed:clickhouse": "node scripts/seed-clickhouse.mjs",
-    "ingest:weather": "node scripts/ingest-weather-grid.mjs"
+    "ingest:weather": "node scripts/ingest-weather-grid.mjs",
+    "deploy:trigger": "npx trigger.dev@4.5.4 deploy",
+    "deploy:trigger:dry": "npx trigger.dev@4.5.4 deploy --dry-run"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.18",

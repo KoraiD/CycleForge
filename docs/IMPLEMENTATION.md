@@ -101,11 +101,11 @@ Status: **done** · **next** · **spike** · **stretch**
 
 | ID | Task | Status | Pri | Est. | Notes |
 | --- | --- | --- | --- | --- | --- |
-| B1 | Deploy agent once to Trigger cloud | next | P0 | 1h | Backup if local worker flakes |
+| **B1** | **Deploy agent once to Trigger cloud** | **docs** | **P0** | — | Commands + env in [`SUBMIT.md`](SUBMIT.md); captain runs live deploy |
 | B2 | Parallel ORS children | done | P0 | — | `batchTriggerAndWait` |
 | B3 | `toModelOutput` compress plan JSON | next | P1 | 2h | Reliability with Gemini |
 | B4 | Run tags: sessionId, start, source | next | P1 | 1h | Dashboard clarity |
-| B5 | Dashboard walkthrough notes for video | next | P0 | 30m | Non-code |
+| **B5** | **Dashboard walkthrough notes for video** | **done** | **P0** | — | Trigger + CH SQL beats in [`SUBMIT.md`](SUBMIT.md) |
 | B6 | Durable **ingest tasks** for open-data pipeline | done | P0 | — | `ingest-weather-grid` + 6h schedule + CLI |
 
 ### C — ClickHouse depth (expanded)
@@ -136,9 +136,9 @@ Status: **done** · **next** · **spike** · **stretch**
 | --- | --- | --- | --- | --- | --- |
 | E1 | `npm run check` green | ongoing | P0 | — | |
 | E2 | GitHub Actions CI | done | P1 | — | |
-| E3 | Flip repo public; scrub secrets | next | P0 | 30m | Before submit |
-| E4 | Record ≤5 min video | next | P0 | 2h | Update script §7 |
-| E5 | Submission form copy | next | P0 | 1h | Update CH/Trigger paragraphs for pipeline |
+| **E3** | **Flip repo public; scrub secrets** | **docs** | **P0** | — | Checklist in [`SUBMIT.md`](SUBMIT.md); captain flips visibility |
+| **E4** | **Record ≤5 min video** | **docs** | **P0** | — | Shot list + narration in [`SUBMIT.md`](SUBMIT.md) §E4 |
+| **E5** | **Submission form copy** | **done** | **P0** | — | Paste-ready copy in [`SUBMIT.md`](SUBMIT.md) §E5 |
 
 ### F — Brand
 
@@ -282,7 +282,7 @@ F1 logo · D4 map/address start · C6/C7 weather pipeline · **K1–K3/K8/K9** �
 
 ### P0 — ship before video
 
-1. **B1/B5/E3/E4/E5** Deploy notes, video, public repo, form copy  
+1. **Captain actions from [`SUBMIT.md`](SUBMIT.md):** live Trigger deploy (B1), record video (E4), flip repo public (E3), submit form (E5)  
 
 ### P1 — if P0 on track
 
@@ -324,10 +324,11 @@ F1 logo · D4 map/address start · C6/C7 weather pipeline · **K1–K3/K8/K9** �
 
 ### Final day / morning — Harden + submit
 
-- [ ] B3/B4 if time; dry-run Trigger + CH console  
-- [ ] E4 Record video (script §7)  
-- [ ] E3 Public repo + secret scrub  
-- [ ] E5 Form submit; freeze commits  
+- [x] Submit playbook: [`docs/SUBMIT.md`](SUBMIT.md) (B1/B5/E3/E4/E5 docs)  
+- [ ] Captain: `npm run deploy:trigger` (or prove local run tree)  
+- [ ] Captain: record video from SUBMIT §E4  
+- [ ] Captain: flip repo public + scrub (SUBMIT §E3)  
+- [ ] Captain: form submit with SUBMIT §E5; freeze feature commits  
 
 ---
 
@@ -376,24 +377,17 @@ Chat text stays short (1–2 sentences). Longer coaching lives on `plan.coachNot
 
 ---
 
-## 8. Demo video script (≤ 5 minutes) — updated outline
+## 8. Demo video script (≤ 5 minutes)
 
-| Time | Action | Say |
-| --- | --- | --- |
-| 0:00–0:15 | Logo + app open | “CycleForge — visual training plans, not walls of text.” |
-| 0:15–0:40 | Set start via map/address (or AMS preset) | “Start anywhere — pin or address.” |
-| 0:40–1:10 | Demo prompt + wizard | “Chat intake → interactive controls.” |
-| 1:10–1:50 | Generate; show richer map + tweaks | “Three scored loops; tweak without leaving the plan.” |
-| 1:50–2:20 | Show coach suggestion + optional history | “AI suggests how to ride this session from path + weather + load.” |
-| 2:20–2:50 | GPX + summary page | “Export the ride; share a mixed visual summary.” |
-| 2:50–3:30 | Trigger dashboard | “Durable agent, ORS fan-out, ingest + score tasks.” |
-| 3:30–4:20 | ClickHouse console | Pipeline tables + `route_scores_ranked` + join example. |
-| 4:20–4:50 | Architecture one-liner | “Insight-to-words: the map — and the next workout — are the answer.” |
-| 4:50–5:00 | End card | Logo + repo URL |
+**Canonical shot list + narration:** [`SUBMIT.md`](SUBMIT.md) §E4.
+
+Summary beats: athlete fixture → demo prompt → interactive plan/coach → GPX/summary → Trigger fan-out tree → ClickHouse weather/ranking/history → end card with public repo URL.
 
 ---
 
-## 9. Submission copy (draft — revise when pipeline ships)
+## 9. Submission copy
+
+**Canonical paste-ready form fields:** [`SUBMIT.md`](SUBMIT.md) §E5.
 
 **Title:** CycleForge  
 
@@ -401,7 +395,7 @@ Chat text stays short (1–2 sentences). Longer coaching lives on `plan.coachNot
 
 **How we use Trigger.dev:** Durable `cycleforge-agent` orchestrates planning; child tasks fan out ORS routes, score/enrich plans, and run fixed open-data ingest into ClickHouse.
 
-**How we use ClickHouse:** Analytics + feature store: sessions/routes/scores, open weather (and related) pipeline tables, SQL ranking (`route_scores_ranked`), similar rides, and plan-time joins that ground suggestions in stored data.
+**How we use ClickHouse:** Analytics + feature store: sessions/routes/scores, open weather pipeline tables, SQL ranking (`route_scores_ranked`), athlete history fixture, similar rides, and plan-time joins that ground suggestions in stored data.
 
 ---
 
@@ -432,17 +426,19 @@ Chat text stays short (1–2 sentences). Longer coaching lives on `plan.coachNot
 
 ## 12. Checklist before code freeze
 
-- [ ] `npm run check` passes  
-- [ ] Logo in UI  
-- [ ] Map/address start works in demo  
-- [ ] CH pipeline tables populated; join visible in console  
-- [ ] Coach note + richer visuals + tweaks  
-- [ ] GPX + summary page  
-- [ ] Athlete path: fixture and/or one import (document spike outcome)  
+Use [`SUBMIT.md`](SUBMIT.md) captain freeze list. Product docs checklist:
+
+- [x] Logo in UI  
+- [x] Map/address start works in demo  
+- [x] CH pipeline tables + athlete fixture  
+- [x] Coach note + richer visuals + tweaks  
+- [x] GPX + summary page  
+- [x] Athlete path: fixture (spike documented)  
+- [x] Submit playbook (deploy / video / form / scrub)  
+- [ ] `npm run check` on freeze commit  
 - [ ] Agent mode demo recorded  
 - [ ] Repo public + MIT  
 - [ ] Secrets scrubbed  
-- [ ] README / RUN.md match shipped behavior  
 - [ ] Form submitted by captain  
 
 ---
@@ -454,7 +450,8 @@ Chat text stays short (1–2 sentences). Longer coaching lives on `plan.coachNot
 | 20 Jul | Google AI Studio instead of OpenAI | Shipped (PR #1) |
 | 20 Jul | Expand beyond AMS-only; CH pipeline; GPX/summary; logo; athlete spike | Plan updated (this doc) |
 | 20 Jul | Athlete platform for demo | **Fixture `demo-ams-rider`** (no live OAuth) |
-| TBD | Geocoder choice (ORS vs Nominatim) | *pending D4* |
+| 20 Jul | Geocoder | Open-Meteo geocode in wizard (D4) |
+| 20 Jul | Submit path docs | [`docs/SUBMIT.md`](SUBMIT.md) for B1/B5/E3/E4/E5 |
 
 ---
 

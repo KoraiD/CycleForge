@@ -12,7 +12,10 @@
     "typecheck": "npm run typecheck --prefix apps/web",
     "test": "npm run test --prefix apps/web",
     "check": "npm run check --prefix apps/web",
-    "seed:clickhouse": "npm run seed:clickhouse --prefix apps/web"
+    "seed:clickhouse": "npm run seed:clickhouse --prefix apps/web",
+    "ingest:weather": "npm run ingest:weather --prefix apps/web",
+    "deploy:trigger": "npm run deploy:trigger --prefix apps/web",
+    "deploy:trigger:dry": "npm run deploy:trigger:dry --prefix apps/web"
   },
   "license": "MIT"
 }
