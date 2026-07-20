@@ -7,9 +7,15 @@ import { ROUTE_COLORS } from "@/lib/constants";
 import { downloadRouteGpx } from "@/lib/gpx";
 import type { PlanPayload } from "@/lib/types";
 import { BrandMark } from "./brand-mark";
+import { CommuteVerdict } from "./commute-verdict";
 import { ElevationChart } from "./elevation-chart";
+import { HistoryChart } from "./history-chart";
 import { RouteMap } from "./route-map";
+import { RouteRadar } from "./route-radar";
+import { ScoreChart } from "./score-chart";
+import { ScoreExplainDrawer } from "./score-explain";
 import { TrainingBlock } from "./training-block";
+import { TssCalendar } from "./tss-calendar";
 
 function formatDuration(seconds: number) {
   const h = Math.floor(seconds / 3600);
@@ -91,10 +97,18 @@ export function SummaryView({
   return (
     <div className="summary-page">
       <header className="summary-top no-print">
-        <Link href="/" className="summary-brand">
-          <BrandMark withWordmark size={32} />
-        </Link>
+        <div className="summary-top__brand">
+          <Link href="/" className="ghost summary-back">
+            ← Back to planner
+          </Link>
+          <Link href="/" className="summary-brand">
+            <BrandMark withWordmark size={32} />
+          </Link>
+        </div>
         <div className="summary-top__actions">
+          <Link href="/stack" className="ghost">
+            Stack
+          </Link>
           <button type="button" className="ghost" onClick={() => void copyLink()}>
             {copied ? "Link copied" : "Copy link"}
           </button>
@@ -177,11 +191,25 @@ export function SummaryView({
         {coachNote ? (
           <article className="coach-note" aria-label="Coaching suggestion">
             <p className="eyebrow">Coach note</p>
-            {coachNote.split("\n\n").map((para) => (
-              <p key={para.slice(0, 48)}>{para}</p>
+            {coachNote.split("\n\n").map((para, i) => (
+              <p key={`coach-${i}`}>{para}</p>
             ))}
           </article>
         ) : null}
+
+        {plan.leaveWindow ? <CommuteVerdict leave={plan.leaveWindow} /> : null}
+
+        <RouteRadar
+          routes={plan.routes}
+          selectedRouteId={selected.routeId}
+          onSelect={(id) => {
+            setSelectedId(id);
+            setHoverKm(null);
+            setPreviewRouteId(null);
+          }}
+        />
+
+        <ScoreExplainDrawer route={selected} wizard={plan.wizard} />
 
         <div className="plan-grid">
           <div>
@@ -191,6 +219,7 @@ export function SummaryView({
               accent={accent}
               hoverKm={hoverKm}
               onHoverKm={setHoverKm}
+              effortSegments={selected.effortSegments}
             />
           </div>
           <div>
@@ -199,16 +228,84 @@ export function SummaryView({
           </div>
         </div>
 
+        <div className="plan-grid">
+          <div>
+            <h2>Score breakdown</h2>
+            <ScoreChart score={selected.score} />
+          </div>
+          <div>
+            <h2>
+              {plan.historyContext ? "Athlete load" : "Candidate span"}
+            </h2>
+            {plan.historyContext ? (
+              <>
+                <HistoryChart history={plan.historyContext} />
+                <TssCalendar history={plan.historyContext} />
+              </>
+            ) : (
+              <div className="comparison-graphic">
+                <p>
+                  Distance {plan.comparison.minDistanceKm.toFixed(1)}–
+                  {plan.comparison.maxDistanceKm.toFixed(1)} km
+                </p>
+                <div
+                  className="comparison-bar"
+                  title="Relative distance band"
+                >
+                  <span
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        (selected.distanceM /
+                          1000 /
+                          Math.max(plan.comparison.maxDistanceKm, 1)) *
+                          100,
+                      )}%`,
+                    }}
+                  />
+                </div>
+                <p>
+                  Climb {Math.round(plan.comparison.minClimbM)}–
+                  {Math.round(plan.comparison.maxClimbM)} m
+                </p>
+                <div
+                  className="comparison-bar comparison-bar--climb"
+                  title="Relative climb band"
+                >
+                  <span
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        (selected.elevGainM /
+                          Math.max(plan.comparison.maxClimbM, 1)) *
+                          100,
+                      )}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="plan-meta">
-          {selected.weather && (
-            <p className="weather">
+          {selected.weather ? (
+            <p className="weather weather--prominent">
+              <span className="eyebrow">Weather on route</span>
               {selected.weather.summary} · {Math.round(selected.weather.tempC)}
               °C · wind {Math.round(selected.weather.windKmh)} km/h
+              {selected.weather.precipMm >= 0.5
+                ? ` · precip ${selected.weather.precipMm.toFixed(1)} mm`
+                : ""}
               {selected.weather.source === "clickhouse"
                 ? " · via ClickHouse weather grid"
                 : selected.weather.source === "open-meteo"
                   ? " · live Open-Meteo"
                   : ""}
+            </p>
+          ) : (
+            <p className="weather weather--missing">
+              No weather snapshot yet — run weather ingest or regenerate routes.
             </p>
           )}
           <p className="comparison">
@@ -228,8 +325,8 @@ export function SummaryView({
           <section>
             <h2>Tips</h2>
             <ul className="tips">
-              {selected.tips.map((tip) => (
-                <li key={tip}>{tip}</li>
+              {selected.tips.map((tip, i) => (
+                <li key={`tip-${i}`}>{tip}</li>
               ))}
             </ul>
           </section>

@@ -57,4 +57,18 @@ describe("estimateTraining", () => {
     expect(sum).toBeGreaterThanOrEqual(98);
     expect(sum).toBeLessThanOrEqual(102);
   });
+
+  it("uses FTP to estimate normalized power", () => {
+    const result = estimateTraining({
+      distanceM: 40_000,
+      durationS: 5400,
+      elevGainM: 80,
+      intensity: "endurance",
+      terrainBias: "rolling",
+      ftpWatts: 250,
+    });
+    expect(result.ftpWatts).toBe(250);
+    expect(result.npEst).toBeGreaterThan(150);
+    expect(result.npEst).toBeLessThan(250);
+  });
 });

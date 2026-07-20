@@ -29,6 +29,24 @@ function loadEnvFile(filePath) {
 loadEnvFile(resolve(appRoot, ".env.local"));
 loadEnvFile(resolve(appRoot, ".env"));
 
+// Prefer BYOK runtime config written by the Setup UI.
+try {
+  const cfgPath = resolve(appRoot, ".data/runtime-config.json");
+  if (existsSync(cfgPath)) {
+    const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+    if (cfg.clickhouseUrl) process.env.CLICKHOUSE_URL = cfg.clickhouseUrl;
+    if (cfg.clickhouseUser) process.env.CLICKHOUSE_USER = cfg.clickhouseUser;
+    if (cfg.clickhousePassword !== undefined) {
+      process.env.CLICKHOUSE_PASSWORD = cfg.clickhousePassword;
+    }
+    if (cfg.clickhouseDatabase) {
+      process.env.CLICKHOUSE_DATABASE = cfg.clickhouseDatabase;
+    }
+  }
+} catch {
+  /* ignore */
+}
+
 const url = process.env.CLICKHOUSE_URL || process.env.CLICKHOUSE_HOST;
 if (!url) {
   console.error("Set CLICKHOUSE_URL (and user/password) before seeding.");

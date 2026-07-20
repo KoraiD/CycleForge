@@ -22,6 +22,8 @@ describe("athlete-history", () => {
     expect(history.lastHardLabel).toBeTruthy();
     expect(history.summaryLine).toContain("Demo AMS rider");
     expect(history.loadHint.length).toBeGreaterThan(5);
+    expect(history.dailyLoad?.length).toBeGreaterThan(0);
+    expect(history.dailyLoad?.every((d) => d.date && d.tss >= 0)).toBe(true);
   });
 
   it("suggests easier intensity after hard recent load", () => {

@@ -105,7 +105,7 @@ pnpm-debug.log*
 lerna-debug.log*
 
 # ----- Hackathon / local-only materials -----
-# Participant PDFs and local notes stay off the remote
+# Participant PDFs and local notes stay off the remote (do not publish briefs)
 *.pdf
 docs/private/
 tmp/
@@ -113,6 +113,7 @@ temp/
 .scratch/
 .data/
 **/.data/
+runtime-config.json
 
 # ----- Misc generated -----
 *.tgz

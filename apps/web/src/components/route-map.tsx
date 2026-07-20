@@ -2,11 +2,21 @@
 
 import { LngLatBounds } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Map, { Layer, Marker, Source, type MapRef } from "react-map-gl/maplibre";
+import Map, {
+  Layer,
+  Marker,
+  NavigationControl,
+  Source,
+  type MapRef,
+} from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { ROUTE_COLORS } from "@/lib/constants";
 import { nearestKmAlongLine, pointAtKm } from "@/lib/geometry";
 import type { RouteCandidate } from "@/lib/types";
+import {
+  buildWindSegments,
+  windSegmentColor,
+} from "@/lib/wind-segments";
 
 function endpoint(
   route: RouteCandidate,
@@ -40,6 +50,7 @@ export function RouteMap({
   onHoverKm,
   previewRouteId = null,
   onPreviewRoute,
+  morphFrom = null,
 }: {
   routes: RouteCandidate[];
   selectedRouteId: string;
@@ -48,10 +59,26 @@ export function RouteMap({
   onHoverKm?: (km: number | null) => void;
   previewRouteId?: string | null;
   onPreviewRoute?: (routeId: string | null) => void;
+  /** Previous selected geometry for regenerate morph ghost. */
+  morphFrom?: GeoJSON.LineString | null;
 }) {
   const mapRef = useRef<MapRef>(null);
   const [hintVisible, setHintVisible] = useState(true);
   const [legendOpen, setLegendOpen] = useState(true);
+  const [morphOpacity, setMorphOpacity] = useState(0);
+
+  useEffect(() => {
+    if (!morphFrom) {
+      const clear = window.setTimeout(() => setMorphOpacity(0), 0);
+      return () => window.clearTimeout(clear);
+    }
+    const fadeIn = window.setTimeout(() => setMorphOpacity(0.55), 0);
+    const fadeOut = window.setTimeout(() => setMorphOpacity(0), 1200);
+    return () => {
+      window.clearTimeout(fadeIn);
+      window.clearTimeout(fadeOut);
+    };
+  }, [morphFrom, selectedRouteId]);
 
   const selected = useMemo(
     () => routes.find((r) => r.routeId === selectedRouteId) ?? routes[0],
@@ -67,8 +94,13 @@ export function RouteMap({
 
   const start = selected ? endpoint(selected, "start") : null;
   const end = selected ? endpoint(selected, "end") : null;
-  const windDir = selected?.weather?.windDirDeg ?? 0;
-  const windKmh = selected?.weather?.windKmh ?? 0;
+  const weather = selected?.weather ?? null;
+  const windDir = weather?.windDirDeg ?? 0;
+  const windKmh = weather?.windKmh ?? 0;
+  const windSegments = useMemo(() => {
+    if (!selected || windKmh < 8) return [];
+    return buildWindSegments(selected, windDir);
+  }, [selected, windDir, windKmh]);
 
   const hoverPoint = useMemo(() => {
     if (hoverKm === null || hoverKm === undefined || !selected) return null;
@@ -146,6 +178,53 @@ export function RouteMap({
         onMouseLeave={onMapMouseLeave}
         onLoad={fitAll}
       >
+        <NavigationControl position="bottom-right" showCompass={false} />
+        {morphFrom && morphOpacity > 0.02 ? (
+          <Source
+            id="morph-ghost"
+            type="geojson"
+            data={{
+              type: "Feature",
+              properties: {},
+              geometry: morphFrom,
+            }}
+          >
+            <Layer
+              id="morph-ghost-line"
+              type="line"
+              paint={{
+                "line-color": "#1c211c",
+                "line-width": 4,
+                "line-opacity": morphOpacity,
+                "line-dasharray": [1.5, 1.5],
+              }}
+              layout={{ "line-cap": "round", "line-join": "round" }}
+            />
+          </Source>
+        ) : null}
+        {windSegments.map((seg, i) => (
+          <Source
+            key={`wind-${i}-${seg.fromKm}`}
+            id={`wind-seg-${i}`}
+            type="geojson"
+            data={{
+              type: "Feature",
+              properties: {},
+              geometry: { type: "LineString", coordinates: seg.coordinates },
+            }}
+          >
+            <Layer
+              id={`wind-line-${i}`}
+              type="line"
+              paint={{
+                "line-color": windSegmentColor(seg.headwind),
+                "line-width": 7,
+                "line-opacity": 0.55,
+              }}
+              layout={{ "line-cap": "round", "line-join": "round" }}
+            />
+          </Source>
+        ))}
         {routes.map((route, index) => {
           const isSelected = route.routeId === selectedRouteId;
           const isPreview = route.routeId === previewRouteId;
@@ -233,18 +312,37 @@ export function RouteMap({
       </Map>
 
       <div className="map-chrome">
-        {windKmh > 0 && (
+        {weather ? (
           <div
-            className="wind-badge"
-            title={`Wind ${Math.round(windKmh)} km/h`}
-            style={{ ["--wind-rot" as string]: `${windDir}deg` }}
+            className="weather-badge"
+            title={`${weather.summary} · wind from ${Math.round(windDir)}°`}
           >
-            <span className="wind-badge__arrow" aria-hidden>
-              ↑
+            <span className="weather-badge__temp">
+              {Math.round(weather.tempC)}°
             </span>
-            <span>{Math.round(windKmh)} km/h</span>
+            <span className="weather-badge__meta">
+              {weather.summary}
+              {windKmh > 0 ? (
+                <span
+                  className="wind-inline"
+                  style={{ ["--wind-rot" as string]: `${windDir}deg` }}
+                >
+                  <span className="wind-badge__arrow" aria-hidden>
+                    ↑
+                  </span>
+                  {Math.round(windKmh)} km/h
+                </span>
+              ) : null}
+            </span>
           </div>
-        )}
+        ) : null}
+        {windSegments.length > 0 ? (
+          <div className="wind-legend" title="Route tinted by wind relative to travel">
+            <span className="wind-legend__h">Head</span>
+            <span className="wind-legend__c">Cross</span>
+            <span className="wind-legend__t">Tail</span>
+          </div>
+        ) : null}
         <button
           type="button"
           className="map-fit-btn"

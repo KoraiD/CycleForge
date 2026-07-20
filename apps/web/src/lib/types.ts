@@ -15,6 +15,8 @@ export type WizardState = {
   startLabel: string;
   avoidBusyRoads: boolean;
   confirmed: boolean;
+  /** Functional threshold power (watts). Improves IF/TSS when set. */
+  ftpWatts: number | null;
 };
 
 export type ElevPoint = {
@@ -36,6 +38,38 @@ export type TrainingEffect = {
   stimulus: "recovery" | "endurance" | "tempo" | "climb" | "vo2";
   zoneMix: ZoneMix;
   recoveryHint: string;
+  /** Present when TSS used rider FTP. */
+  ftpWatts?: number | null;
+  /** Estimated normalized power when FTP is known. */
+  npEst?: number | null;
+};
+
+export type HourlyRideScore = {
+  time: string;
+  label: string;
+  score: number;
+  verdict: "go" | "caution" | "no-go";
+  tempC: number;
+  windKmh: number;
+  precipMm: number;
+  summary: string;
+};
+
+export type LeaveWindowHint = {
+  bestStartIso: string;
+  bestStartLabel: string;
+  score: number;
+  reason: string;
+  alternatives: Array<{ startIso: string; label: string; score: number }>;
+  /** Scored hourly windows for the commute verdict scrubber. */
+  hours?: HourlyRideScore[];
+};
+
+export type EffortSegment = {
+  fromKm: number;
+  toKm: number;
+  zone: 1 | 2 | 3 | 4 | 5;
+  label: string;
 };
 
 export type WeatherSnapshot = {
@@ -73,6 +107,8 @@ export type RouteCandidate = {
   score: RouteScore;
   similarRideLabels: string[];
   source: "ors" | "fallback" | "seed";
+  /** Climb-based effort bands for elevation overlay. */
+  effortSegments?: EffortSegment[];
 };
 
 /** Aggregates from rider_history_rides / demo fixture for coaching. */
@@ -91,6 +127,8 @@ export type HistoryContext = {
   recentLabels: string[];
   summaryLine: string;
   loadHint: string;
+  /** Per-day TSS for calendar heatmap (last ~28d). */
+  dailyLoad?: Array<{ date: string; tss: number; hours: number; label?: string }>;
 };
 
 export type PlanPayload = {
@@ -102,6 +140,8 @@ export type PlanPayload = {
   coachNote: string;
   /** Present when a demo/imported athlete is bound to the session. */
   historyContext?: HistoryContext;
+  /** Best departure window from hourly weather. */
+  leaveWindow?: LeaveWindowHint | null;
   comparison: {
     minClimbM: number;
     maxClimbM: number;
@@ -116,10 +156,11 @@ export const DEFAULT_WIZARD = (sessionId: string): WizardState => ({
   durationMin: 90,
   intensity: "endurance",
   terrainBias: "rolling",
-  startPreset: "vondelpark",
-  startLat: 52.3577,
-  startLng: 4.8686,
-  startLabel: "Vondelpark",
+  startPreset: "custom",
+  startLat: 52.3676,
+  startLng: 4.9041,
+  startLabel: "Pick a start on the map",
   avoidBusyRoads: true,
   confirmed: false,
+  ftpWatts: null,
 });

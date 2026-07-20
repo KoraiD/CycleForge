@@ -2,13 +2,21 @@
 
 import { auth } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
-import { DEMO_ATHLETE_ID, suggestIntensityFromHistory } from "@/lib/athlete-history";
+import { randomUUID } from "node:crypto";
+import {
+  DEMO_ATHLETE_ID,
+  suggestIntensityFromHistory,
+  type RiderHistoryRide,
+} from "@/lib/athlete-history";
 import {
   ensureDemoAthleteSeeded,
   getHistoryContext,
   getMemoryPlan,
+  upsertRiderHistoryRides,
+  upsertTrainingBlock,
 } from "@/lib/clickhouse";
 import { attachCoachNote } from "@/lib/coach-note";
+import { parseGpxRide } from "@/lib/parse-gpx";
 import { buildPlan, mergeWizard } from "@/lib/plan-builder";
 import {
   getPlan,
@@ -18,6 +26,10 @@ import {
   setSessionAthlete,
   setWizard,
 } from "@/lib/session-store";
+import {
+  buildTrainingBlockPlan,
+  type TrainingBlockPlan,
+} from "@/lib/training-block-plan";
 import {
   DEFAULT_WIZARD,
   type HistoryContext,
@@ -83,6 +95,12 @@ export async function getPlanAction(
   return getMemoryPlan(sessionId);
 }
 
+/** Persist a plan payload from the client (e.g. agent tool output) into the Next store. */
+export async function persistPlanAction(plan: PlanPayload): Promise<void> {
+  setWizard(plan.wizard);
+  setPlan(plan);
+}
+
 /** Persist selection so `/summary/[sessionId]` reflects the chosen route. */
 export async function selectRouteAction(
   sessionId: string,
@@ -128,4 +146,83 @@ export async function getSessionHistoryAction(
   const athleteId = getSessionAthlete(sessionId);
   if (!athleteId) return null;
   return getHistoryContext(athleteId);
+}
+
+/**
+ * Import a GPX export (Strava / Garmin / TrainingPeaks) into rider_history_rides.
+ * Full OAuth connectors are out of scope for the hackathon; GPX is the portable path.
+ */
+export async function uploadGpxHistoryAction(
+  sessionId: string,
+  gpxXml: string,
+  fileName?: string,
+): Promise<{ history: HistoryContext; rideLabel: string }> {
+  const parsed = parseGpxRide(
+    gpxXml,
+    fileName?.replace(/\.gpx$/i, "") || "Uploaded ride",
+  );
+  const athleteId = `upload-${sessionId.slice(0, 12)}`;
+  const ride: RiderHistoryRide = {
+    athleteId,
+    rideId: `gpx-${randomUUID().slice(0, 12)}`,
+    startedAt: parsed.startedAt,
+    label: parsed.label,
+    distanceM: parsed.distanceM,
+    durationS: parsed.durationS,
+    elevGainM: parsed.elevGainM,
+    tssEst: parsed.tssEst,
+    intensity: parsed.intensity,
+    source: "upload",
+  };
+
+  await upsertRiderHistoryRides([ride], { merge: true });
+  setSessionAthlete(sessionId, athleteId);
+
+  const history = await getHistoryContext(athleteId, "Your GPX uploads");
+  if (!history) {
+    throw new Error("Upload saved but history could not be summarized.");
+  }
+
+  const current = getWizard(sessionId);
+  const suggested = suggestIntensityFromHistory(history, current.intensity);
+  const wizard = suggested
+    ? mergeWizard(current, { intensity: suggested })
+    : current;
+  if (suggested) setWizard(wizard);
+
+  const plan = getPlan(sessionId);
+  if (plan) {
+    setPlan(attachCoachNote({ ...plan, historyContext: history, wizard }));
+  }
+
+  return { history, rideLabel: ride.label };
+}
+
+/** Build a 4-day microcycle and persist to ClickHouse training_blocks. */
+export async function createTrainingBlockAction(
+  sessionId: string,
+): Promise<TrainingBlockPlan> {
+  const wizard = getWizard(sessionId) ?? DEFAULT_WIZARD(sessionId);
+  const athleteId =
+    getSessionAthlete(sessionId) ?? `session-${sessionId.slice(0, 12)}`;
+  const history = await getHistoryContext(athleteId);
+  const block = buildTrainingBlockPlan({
+    sessionId,
+    athleteId,
+    wizard,
+    history,
+    blockId: randomUUID(),
+  });
+
+  await upsertTrainingBlock({
+    blockId: block.blockId,
+    sessionId: block.sessionId,
+    athleteId: block.athleteId,
+    label: block.label,
+    notes: block.notes,
+    totalTargetTss: block.totalTargetTss,
+    daysJson: JSON.stringify(block.days),
+  });
+
+  return block;
 }

@@ -34,6 +34,15 @@ export function TrainingBlock({ training }: { training: TrainingEffect }) {
           <span className="label">IF</span>
           <strong>{training.ifEst.toFixed(2)}</strong>
         </div>
+        {training.ftpWatts ? (
+          <div>
+            <span className="label">FTP / NP</span>
+            <strong>
+              {training.ftpWatts}
+              {training.npEst ? ` / ${training.npEst}` : ""} W
+            </strong>
+          </div>
+        ) : null}
       </div>
       <div className="zone-bar" aria-label="Zone mix">
         {zones.map((z) =>

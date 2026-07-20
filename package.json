@@ -2,7 +2,7 @@
   "name": "cycleforge",
   "private": true,
   "version": "0.1.0",
-  "description": "CycleForge — visual cycling training planner (ClickHouse × Trigger.dev hackathon)",
+  "description": "CycleForge — visual cycling training planner. BYOK self-host for ClickHouse × Trigger.dev hackathon / open source.",
   "scripts": {
     "dev": "npm run dev --prefix apps/web",
     "dev:trigger": "npm run dev:trigger --prefix apps/web",

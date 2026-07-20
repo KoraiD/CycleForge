@@ -1,4 +1,5 @@
 import { createClient, type ClickHouseClient } from "@clickhouse/client";
+import { runs } from "@trigger.dev/sdk";
 import {
   buildDemoAthleteRides,
   DEMO_ATHLETE_ID,
@@ -7,6 +8,7 @@ import {
   type RiderHistoryRide,
 } from "./athlete-history";
 import { attachCoachNote } from "./coach-note";
+import { ensureRuntimeConfigLoaded } from "./runtime-config";
 import type {
   HistoryContext,
   Intensity,
@@ -17,25 +19,57 @@ import type {
 import type { WeatherGridRow } from "./weather-grid";
 
 let client: ClickHouseClient | null = null;
+let clientKey = "";
 
 function getClient(): ClickHouseClient | null {
+  ensureRuntimeConfigLoaded();
   const url = process.env.CLICKHOUSE_HOST || process.env.CLICKHOUSE_URL;
   const username = process.env.CLICKHOUSE_USER || "default";
   const password = process.env.CLICKHOUSE_PASSWORD || "";
-  if (!url) return null;
+  const database = process.env.CLICKHOUSE_DATABASE || "default";
+  if (!url) {
+    if (client) {
+      void client.close().catch(() => undefined);
+      client = null;
+      clientKey = "";
+    }
+    return null;
+  }
+  const key = `${url}|${username}|${password}|${database}`;
+  if (client && clientKey !== key) {
+    void client.close().catch(() => undefined);
+    client = null;
+    clientKey = "";
+  }
   if (!client) {
     client = createClient({
       url,
       username,
       password,
-      database: process.env.CLICKHOUSE_DATABASE || "default",
+      database,
     });
+    clientKey = key;
   }
   return client;
 }
 
 export function clickhouseConfigured(): boolean {
+  ensureRuntimeConfigLoaded();
   return Boolean(process.env.CLICKHOUSE_HOST || process.env.CLICKHOUSE_URL);
+}
+
+export async function pingClickHouse(): Promise<{ ok: boolean; error?: string }> {
+  const ch = getClient();
+  if (!ch) return { ok: false, error: "ClickHouse URL not configured" };
+  try {
+    await ch.query({ query: "SELECT 1", format: "JSONEachRow" });
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "ClickHouse ping failed",
+    };
+  }
 }
 
 /** In-memory stand-in when ClickHouse env is missing (local UI work). */
@@ -259,8 +293,10 @@ function formatChDateTime(d: Date): string {
 
 export async function upsertRiderHistoryRides(
   rides: RiderHistoryRide[],
+  opts?: { merge?: boolean },
 ): Promise<void> {
   if (!rides.length) return;
+  const merge = opts?.merge ?? false;
   const byAthlete = new Map<string, RiderHistoryRide[]>();
   for (const ride of rides) {
     const list = byAthlete.get(ride.athleteId) ?? [];
@@ -268,7 +304,14 @@ export async function upsertRiderHistoryRides(
     byAthlete.set(ride.athleteId, list);
   }
   for (const [athleteId, list] of byAthlete) {
-    memoryAthleteRides.set(athleteId, list);
+    if (merge) {
+      const prev = memoryAthleteRides.get(athleteId) ?? [];
+      const byId = new Map(prev.map((r) => [r.rideId, r]));
+      for (const ride of list) byId.set(ride.rideId, ride);
+      memoryAthleteRides.set(athleteId, [...byId.values()]);
+    } else {
+      memoryAthleteRides.set(athleteId, list);
+    }
   }
 
   const ch = getClient();
@@ -355,6 +398,7 @@ export async function queryRiderHistory(
 
 export async function getHistoryContext(
   athleteId: string,
+  athleteLabel?: string,
 ): Promise<HistoryContext | null> {
   if (athleteId === DEMO_ATHLETE_ID) {
     const rides = await queryRiderHistory(athleteId);
@@ -370,11 +414,445 @@ export async function getHistoryContext(
 
   const rides = await queryRiderHistory(athleteId);
   if (!rides.length) return null;
+  const label =
+    athleteLabel ??
+    (athleteId.startsWith("upload-") ? "Your GPX uploads" : athleteId);
   return summarizeAthleteHistory(rides, {
     athleteId,
-    athleteLabel: athleteId,
+    athleteLabel: label,
     source: rides[0]?.source ?? "upload",
   });
+}
+
+export type StackRunRow = {
+  id: string;
+  taskIdentifier: string;
+  status: string;
+  createdAt: string;
+  url: string;
+};
+
+export type StackStats = {
+  clickhouseConfigured: boolean;
+  triggerConfigured: boolean;
+  projectRef: string | null;
+  dashboardUrl: string | null;
+  counts: {
+    planSessions: number | null;
+    routesLive: number | null;
+    routesSeed: number | null;
+    routeScores: number | null;
+    weatherTiles: number | null;
+    riderHistoryRides: number | null;
+    trainingBlocks: number | null;
+  };
+  samples: {
+    recentSessions: Array<{ sessionId: string; status: string; goals: string }>;
+    topScores: Array<{ routeId: string; label: string; total: number }>;
+    weatherSample: Array<{
+      tileId: string;
+      summary: string;
+      tempC: number;
+      windKmh: number;
+    }>;
+    athleteLoads: Array<{
+      athleteId: string;
+      rides: number;
+      km: number;
+    }>;
+    trainingBlocks: Array<{
+      blockId: string;
+      label: string;
+      totalTss: number;
+      athleteId: string;
+    }>;
+  };
+  tasks: Array<{ id: string; role: string; cron?: string }>;
+  recentRuns: StackRunRow[];
+  queryErrors: string[];
+  error?: string;
+};
+
+const memoryTrainingBlocks: Array<{
+  blockId: string;
+  sessionId: string;
+  athleteId: string;
+  label: string;
+  notes: string;
+  totalTargetTss: number;
+  daysJson: string;
+}> = [];
+
+export async function upsertTrainingBlock(block: {
+  blockId: string;
+  sessionId: string;
+  athleteId: string;
+  label: string;
+  notes: string;
+  totalTargetTss: number;
+  daysJson: string;
+}): Promise<void> {
+  memoryTrainingBlocks.unshift(block);
+  if (memoryTrainingBlocks.length > 40) memoryTrainingBlocks.pop();
+
+  const ch = getClient();
+  if (!ch) return;
+  try {
+    await ch.insert({
+      table: "training_blocks",
+      values: [
+        {
+          block_id: block.blockId,
+          session_id: block.sessionId,
+          athlete_id: block.athleteId,
+          label: block.label,
+          notes: block.notes,
+          total_target_tss: block.totalTargetTss,
+          days_json: block.daysJson,
+        },
+      ],
+      format: "JSONEachRow",
+    });
+  } catch (err) {
+    console.warn("ClickHouse upsertTrainingBlock failed", err);
+  }
+}
+
+export async function queryStackStats(): Promise<StackStats> {
+  const projectRef = process.env.TRIGGER_PROJECT_REF ?? null;
+  const dashboardUrl = projectRef
+    ? `https://cloud.trigger.dev/projects/v3/${projectRef}`
+    : null;
+
+  const tasks = [
+    { id: "cycleforge-agent", role: "Chat agent orchestration + tool calls" },
+    { id: "generate-route-candidates", role: "Fan-out ORS / fallback geometry" },
+    { id: "fetch-ors-route", role: "Single ORS directions fetch" },
+    { id: "fetch-ors-route-batch", role: "Batched ORS fan-out" },
+    { id: "score-and-enrich-routes", role: "ClickHouse scoring + weather + tips" },
+    { id: "ingest-weather-grid", role: "Open-Meteo → weather_forecast_grid" },
+    {
+      id: "ingest-weather-grid-schedule",
+      role: "Scheduled weather grid refresh",
+      cron: "0 */6 * * *",
+    },
+    {
+      id: "stack-heartbeat-schedule",
+      role: "Hourly stack demo heartbeat (cron)",
+      cron: "15 * * * *",
+    },
+  ];
+
+  const empty: StackStats = {
+    clickhouseConfigured: clickhouseConfigured(),
+    triggerConfigured: Boolean(process.env.TRIGGER_SECRET_KEY),
+    projectRef,
+    dashboardUrl,
+    counts: {
+      planSessions: null,
+      routesLive: null,
+      routesSeed: null,
+      routeScores: null,
+      weatherTiles: null,
+      riderHistoryRides: null,
+      trainingBlocks: null,
+    },
+    samples: {
+      recentSessions: [],
+      topScores: [],
+      weatherSample: [],
+      athleteLoads: [],
+      trainingBlocks: [],
+    },
+    tasks,
+    recentRuns: [],
+    queryErrors: [],
+  };
+
+  // Trigger run history (best-effort).
+  if (empty.triggerConfigured) {
+    try {
+      const page = await runs.list({ limit: 12 });
+      const list = Array.isArray(page)
+        ? page
+        : ((page as { data?: unknown[] }).data ?? []);
+      empty.recentRuns = list.slice(0, 12).map((raw) => {
+        const r = raw as {
+          id?: string;
+          taskIdentifier?: string;
+          status?: string;
+          createdAt?: string | Date;
+        };
+        const id = r.id ?? "unknown";
+        return {
+          id,
+          taskIdentifier: r.taskIdentifier ?? "task",
+          status: String(r.status ?? "unknown"),
+          createdAt:
+            typeof r.createdAt === "string"
+              ? r.createdAt
+              : r.createdAt instanceof Date
+                ? r.createdAt.toISOString()
+                : "",
+          url: dashboardUrl
+            ? `${dashboardUrl}/runs/${id}`
+            : `https://cloud.trigger.dev/runs/${id}`,
+        };
+      });
+    } catch (err) {
+      empty.queryErrors.push(
+        `Trigger runs: ${err instanceof Error ? err.message : "list failed"}`,
+      );
+    }
+  }
+
+  const ch = getClient();
+  if (!ch) {
+    empty.counts.planSessions = memorySessions.size;
+    empty.counts.routesLive = [...memoryRoutes.values()].reduce(
+      (n, r) => n + r.length,
+      0,
+    );
+    empty.counts.routesSeed = seedRides.length;
+    empty.counts.routeScores = empty.counts.routesLive;
+    empty.counts.weatherTiles = memoryWeather.size;
+    empty.counts.riderHistoryRides = [...memoryAthleteRides.values()].reduce(
+      (n, r) => n + r.length,
+      0,
+    );
+    empty.counts.trainingBlocks = memoryTrainingBlocks.length;
+    empty.samples.recentSessions = [...memorySessions.values()]
+      .slice(-5)
+      .reverse()
+      .map((w) => ({
+        sessionId: w.sessionId.slice(0, 8),
+        status: w.confirmed ? "confirmed" : "draft",
+        goals: w.goalsText.slice(0, 80) || "(wizard only)",
+      }));
+    empty.samples.athleteLoads = [...memoryAthleteRides.entries()].map(
+      ([athleteId, rides]) => ({
+        athleteId,
+        rides: rides.length,
+        km:
+          Math.round(
+            (rides.reduce((s, r) => s + r.distanceM, 0) / 1000) * 10,
+          ) / 10,
+      }),
+    );
+    empty.samples.weatherSample = [...memoryWeather.values()]
+      .slice(0, 4)
+      .map((w) => ({
+        tileId: w.tileId,
+        summary: w.summary,
+        tempC: w.tempC,
+        windKmh: w.windKmh,
+      }));
+    empty.samples.trainingBlocks = memoryTrainingBlocks.slice(0, 5).map((b) => ({
+      blockId: b.blockId.slice(0, 8),
+      label: b.label,
+      totalTss: b.totalTargetTss,
+      athleteId: b.athleteId,
+    }));
+    empty.queryErrors.push(
+      "ClickHouse env missing in this process — showing in-memory fallback.",
+    );
+    return empty;
+  }
+
+  const soft = async <T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
+    try {
+      return await fn();
+    } catch (err) {
+      empty.queryErrors.push(
+        `${label}: ${err instanceof Error ? err.message : "failed"}`,
+      );
+      return fallback;
+    }
+  };
+
+  const countQ = (query: string) =>
+    soft(query.slice(0, 40), async () => {
+      const result = await ch.query({ query, format: "JSONEachRow" });
+      const rows = (await result.json()) as Array<{ n: string | number }>;
+      return Number(rows[0]?.n ?? 0);
+    }, null);
+
+  empty.counts.planSessions = await countQ(
+    "SELECT count() AS n FROM plan_sessions",
+  );
+  empty.counts.routesLive = await countQ(
+    "SELECT count() AS n FROM routes WHERE is_seed = 0",
+  );
+  empty.counts.routesSeed = await countQ(
+    "SELECT count() AS n FROM routes WHERE is_seed = 1",
+  );
+  empty.counts.routeScores = await countQ(
+    "SELECT count() AS n FROM route_scores",
+  );
+  empty.counts.weatherTiles = await countQ(
+    "SELECT count() AS n FROM weather_forecast_grid",
+  );
+  empty.counts.riderHistoryRides = await countQ(
+    "SELECT count() AS n FROM rider_history_rides FINAL",
+  );
+  empty.counts.trainingBlocks = await countQ(
+    "SELECT count() AS n FROM training_blocks FINAL",
+  );
+
+  empty.samples.recentSessions = await soft(
+    "recentSessions",
+    async () => {
+      const sessions = await ch.query({
+        query: `
+          SELECT
+            substring(session_id, 1, 8) AS sessionId,
+            status,
+            substring(goals_text, 1, 80) AS goals
+          FROM plan_sessions
+          ORDER BY created_at DESC
+          LIMIT 8
+        `,
+        format: "JSONEachRow",
+      });
+      return (await sessions.json()) as StackStats["samples"]["recentSessions"];
+    },
+    [],
+  );
+
+  empty.samples.topScores = await soft(
+    "topScores",
+    async () => {
+      const scores = await ch.query({
+        query: `
+          SELECT
+            route_id AS routeId,
+            label,
+            total
+          FROM (
+            SELECT
+              rs.route_id,
+              any(r.label) AS label,
+              max(rs.total) AS total
+            FROM route_scores AS rs
+            LEFT JOIN routes AS r ON r.route_id = rs.route_id
+            GROUP BY rs.route_id
+          )
+          ORDER BY total DESC
+          LIMIT 5
+        `,
+        format: "JSONEachRow",
+      });
+      return (
+        (await scores.json()) as Array<{
+          routeId: string;
+          label: string;
+          total: number;
+        }>
+      ).map((r) => ({
+        ...r,
+        total: Math.round(Number(r.total) * 100) / 100,
+      }));
+    },
+    [],
+  );
+
+  empty.samples.weatherSample = await soft(
+    "weatherSample",
+    async () => {
+      const weather = await ch.query({
+        query: `
+          SELECT
+            tile_id AS tileId,
+            summary,
+            temp_c AS tempC,
+            wind_kmh AS windKmh
+          FROM weather_forecast_grid
+          ORDER BY ingested_at DESC
+          LIMIT 6
+        `,
+        format: "JSONEachRow",
+      });
+      return (await weather.json()) as StackStats["samples"]["weatherSample"];
+    },
+    [],
+  );
+
+  empty.samples.athleteLoads = await soft(
+    "athleteLoads",
+    async () => {
+      const athletes = await ch.query({
+        query: `
+          SELECT
+            athlete_id AS athleteId,
+            count() AS rides,
+            round(sum(distance_m) / 1000, 1) AS km
+          FROM rider_history_rides FINAL
+          GROUP BY athlete_id
+          ORDER BY rides DESC
+          LIMIT 6
+        `,
+        format: "JSONEachRow",
+      });
+      return (
+        (await athletes.json()) as Array<{
+          athleteId: string;
+          rides: string | number;
+          km: string | number;
+        }>
+      ).map((r) => ({
+        athleteId: r.athleteId,
+        rides: Number(r.rides),
+        km: Number(r.km),
+      }));
+    },
+    [],
+  );
+
+  empty.samples.trainingBlocks = await soft(
+    "trainingBlocks",
+    async () => {
+      const blocks = await ch.query({
+        query: `
+          SELECT
+            substring(block_id, 1, 8) AS blockId,
+            label,
+            total_target_tss AS totalTss,
+            athlete_id AS athleteId
+          FROM training_blocks FINAL
+          ORDER BY created_at DESC
+          LIMIT 5
+        `,
+        format: "JSONEachRow",
+      });
+      return (
+        (await blocks.json()) as Array<{
+          blockId: string;
+          label: string;
+          totalTss: number;
+          athleteId: string;
+        }>
+      ).map((b) => ({
+        ...b,
+        totalTss: Number(b.totalTss),
+      }));
+    },
+    memoryTrainingBlocks.slice(0, 5).map((b) => ({
+      blockId: b.blockId.slice(0, 8),
+      label: b.label,
+      totalTss: b.totalTargetTss,
+      athleteId: b.athleteId,
+    })),
+  );
+
+  if (
+    empty.counts.planSessions === null &&
+    empty.counts.routesSeed === null &&
+    empty.queryErrors.length > 0
+  ) {
+    empty.error = empty.queryErrors[0];
+  }
+
+  return empty;
 }
 
 export async function upsertWeatherGridRows(
