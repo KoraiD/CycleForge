@@ -2169,6 +2169,11 @@ a.ghost {
 .route-compare__chart {
   display: grid;
   gap: 0.45rem;
+  min-height: 280px;
+}
+
+.route-compare__chart .recharts-polar-angle-axis-tick-value {
+  fill: var(--ink);
 }
 
 .route-compare__chips {
