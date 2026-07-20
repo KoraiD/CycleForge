@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { buildCoachNote } from "@/lib/coach-note";
 import { ROUTE_COLORS } from "@/lib/constants";
+import { downloadRouteGpx } from "@/lib/gpx";
 import type {
   Intensity,
   PlanPayload,
@@ -52,6 +54,14 @@ export function PlanPanel({
     );
   }, [plan.routes, selectedId]);
 
+  const coachNote = useMemo(() => {
+    if (!selected) return plan.coachNote ?? "";
+    if (selected.routeId === plan.selectedRouteId && plan.coachNote) {
+      return plan.coachNote;
+    }
+    return buildCoachNote({ wizard: plan.wizard, route: selected });
+  }, [plan.coachNote, plan.selectedRouteId, plan.wizard, selected]);
+
   if (!selected) return null;
 
   const selectedIndex = Math.max(
@@ -90,10 +100,29 @@ export function PlanPanel({
             <p className="start-meta">From {plan.wizard.startLabel}</p>
           ) : null}
         </div>
-        <div className="score-pill" title="Goal fit score">
-          Fit {Math.round(selected.score.total * 100)}
+        <div className="plan-panel__actions">
+          <button
+            type="button"
+            className="ghost gpx-export"
+            disabled={refining}
+            onClick={() => downloadRouteGpx(selected)}
+          >
+            Download GPX
+          </button>
+          <div className="score-pill" title="Goal fit score">
+            Fit {Math.round(selected.score.total * 100)}
+          </div>
         </div>
       </header>
+
+      {coachNote ? (
+        <article className="coach-note" aria-label="Coaching suggestion">
+          <p className="eyebrow">Coach note</p>
+          {coachNote.split("\n\n").map((para) => (
+            <p key={para.slice(0, 48)}>{para}</p>
+          ))}
+        </article>
+      ) : null}
 
       {refining && (
         <p className="status-banner" role="status">

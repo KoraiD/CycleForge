@@ -6,6 +6,7 @@ import {
   scoreRoutesSql,
   upsertSession,
 } from "@/lib/clickhouse";
+import { attachCoachNote } from "@/lib/coach-note";
 import { scoreRoute } from "@/lib/scoring";
 import { buildTips, comparisonFromRoutes } from "@/lib/tips";
 import { estimateTraining } from "@/lib/training";
@@ -112,11 +113,13 @@ export const scoreAndEnrichRoutesTask = schemaTask({
     logger.info("Scored routes in ClickHouse", { ranked });
 
     return {
-      sessionId: w.sessionId,
-      wizard: w,
-      routes,
-      selectedRouteId: routes[0]?.routeId ?? "",
-      comparison: comparisonFromRoutes(routes),
+      ...attachCoachNote({
+        sessionId: w.sessionId,
+        wizard: w,
+        routes,
+        selectedRouteId: routes[0]?.routeId ?? "",
+        comparison: comparisonFromRoutes(routes),
+      }),
       sqlRanking: ranked,
     };
   },

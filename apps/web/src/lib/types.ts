@@ -80,6 +80,8 @@ export type PlanPayload = {
   wizard: WizardState;
   routes: RouteCandidate[];
   selectedRouteId: string;
+  /** Short coaching suggestion for the selected route (lives on the plan, not in chat). */
+  coachNote: string;
   comparison: {
     minClimbM: number;
     maxClimbM: number;

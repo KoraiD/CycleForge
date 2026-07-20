@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { findSimilarRides, persistRoutes, upsertSession } from "./clickhouse";
+import { attachCoachNote } from "./coach-note";
 import { START_PRESETS } from "./constants";
 import { generateRawRoutes } from "./ors";
 import { scoreRoute } from "./scoring";
@@ -65,13 +66,13 @@ export async function buildPlan(wizard: WizardState): Promise<PlanPayload> {
   routes.sort((a, b) => b.score.total - a.score.total);
   await persistRoutes(wizard.sessionId, routes);
 
-  return {
+  return attachCoachNote({
     sessionId: wizard.sessionId,
     wizard,
     routes,
     selectedRouteId: routes[0]?.routeId ?? "",
     comparison: comparisonFromRoutes(routes),
-  };
+  });
 }
 
 export function mergeWizard(

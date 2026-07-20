@@ -1,4 +1,5 @@
 import { createClient, type ClickHouseClient } from "@clickhouse/client";
+import { attachCoachNote } from "./coach-note";
 import type {
   PlanPayload,
   RouteCandidate,
@@ -226,7 +227,7 @@ export async function getMemoryPlan(sessionId: string): Promise<PlanPayload | nu
   if (!wizard || !routes?.length) return null;
   const climbs = routes.map((r) => r.elevGainM);
   const distances = routes.map((r) => r.distanceM / 1000);
-  return {
+  return attachCoachNote({
     sessionId,
     wizard,
     routes,
@@ -237,7 +238,7 @@ export async function getMemoryPlan(sessionId: string): Promise<PlanPayload | nu
       minDistanceKm: Math.min(...distances),
       maxDistanceKm: Math.max(...distances),
     },
-  };
+  });
 }
 
 const memoryWeather = new Map<string, WeatherGridRow>();
