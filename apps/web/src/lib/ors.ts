@@ -5,7 +5,6 @@ import {
 } from "./geometry";
 import { buildFallbackRoutes, type RawRoute } from "./fallback-routes";
 import { fetchWithTimeout } from "./fetch-timeout";
-import { nameRouteCandidates } from "./name-routes";
 import { placeAwareRouteLabels } from "./route-labels";
 import {
   ROUTE_VARIANTS,
@@ -132,7 +131,9 @@ export async function generateRawRoutes(wizard: WizardState): Promise<RawRoute[]
     ROUTE_VARIANTS.map((variant) => fetchOrsVariant(wizard, variant)),
   );
   const merged = mergeWithFallbacks(wizard, settled);
-  const names = await nameRouteCandidates(wizard, merged);
+  // Place-aware labels instantly — AI naming runs on the Trigger path only
+  // so local regenerate stays snappy and progress feels alive.
+  const names = placeAwareRouteLabels(wizard);
   return merged.map((route, i) => ({
     ...route,
     label: names[i] ?? route.label,
