@@ -412,7 +412,7 @@ export function Chat() {
         adoptPlan(built);
         setLocalWizard(built.wizard);
       } catch (err) {
-        setLocalError(err instanceof Error ? err.message : "Refine failed.");
+        setLocalError(friendlyErrorMessage(err, "Refine failed."));
         return;
       }
       if (agentEnabled && agentPrompt) {
