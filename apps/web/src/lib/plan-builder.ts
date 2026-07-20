@@ -8,6 +8,7 @@ import {
 } from "./clickhouse";
 import { attachCoachNote } from "./coach-note";
 import { START_PRESETS } from "./constants";
+import { withTimeout } from "./fetch-timeout";
 import { generateRawRoutes } from "./ors";
 import { scoreRoute } from "./scoring";
 import { getSessionAthlete } from "./session-store";
@@ -16,20 +17,45 @@ import { buildEffortSegments, estimateTraining } from "./training";
 import type { PlanPayload, RouteCandidate, WizardState } from "./types";
 import { resolveWeather } from "./weather";
 
+const CH_SOFT_MS = 6_000;
+
 export async function buildPlan(wizard: WizardState): Promise<PlanPayload> {
-  await upsertSession(wizard, wizard.goalsText);
+  // Persist session in parallel with route work — never block the map on CH.
+  void withTimeout(upsertSession(wizard, wizard.goalsText), CH_SOFT_MS, undefined);
+
   const athleteId = getSessionAthlete(wizard.sessionId);
   const [weather, leaveWindow, historyContext, rawRoutes] = await Promise.all([
-    resolveWeather(wizard.startLat, wizard.startLng),
-    resolveBestLeave(wizard.startLat, wizard.startLng, wizard.durationMin),
+    withTimeout(resolveWeather(wizard.startLat, wizard.startLng), 10_000, null),
+    withTimeout(
+      resolveBestLeave(wizard.startLat, wizard.startLng, wizard.durationMin),
+      10_000,
+      null,
+    ),
     athleteId
-      ? getHistoryContext(athleteId).then((h) => h ?? undefined)
+      ? withTimeout(
+          getHistoryContext(athleteId).then((h) => h ?? undefined),
+          CH_SOFT_MS,
+          undefined,
+        )
       : Promise.resolve(undefined),
     generateRawRoutes(wizard),
   ]);
 
-  const routes: RouteCandidate[] = [];
-  for (const raw of rawRoutes) {
+  const similarLabels = await Promise.all(
+    rawRoutes.map((raw) =>
+      withTimeout(
+        findSimilarRides({
+          distanceM: raw.distanceM,
+          elevGainM: raw.elevGainM,
+          durationS: raw.durationS,
+        }),
+        CH_SOFT_MS,
+        [],
+      ),
+    ),
+  );
+
+  const routes: RouteCandidate[] = rawRoutes.map((raw, i) => {
     const training = estimateTraining({
       distanceM: raw.distanceM,
       durationS: raw.durationS,
@@ -52,13 +78,8 @@ export async function buildPlan(wizard: WizardState): Promise<PlanPayload> {
       weather,
       profile: raw.profile,
     });
-    const similarRideLabels = await findSimilarRides({
-      distanceM: raw.distanceM,
-      elevGainM: raw.elevGainM,
-      durationS: raw.durationS,
-    });
 
-    routes.push({
+    return {
       routeId: randomUUID(),
       sessionId: wizard.sessionId,
       label: raw.label,
@@ -73,14 +94,15 @@ export async function buildPlan(wizard: WizardState): Promise<PlanPayload> {
       tips,
       training,
       score,
-      similarRideLabels,
+      similarRideLabels: similarLabels[i] ?? [],
       source: raw.source,
       effortSegments: buildEffortSegments(raw.elevProfile),
-    });
-  }
+    };
+  });
 
   routes.sort((a, b) => b.score.total - a.score.total);
-  await persistRoutes(wizard.sessionId, routes);
+  // Memory write is sync inside persistRoutes; CH insert is soft-timed.
+  void withTimeout(persistRoutes(wizard.sessionId, routes), CH_SOFT_MS, undefined);
 
   return attachCoachNote({
     sessionId: wizard.sessionId,

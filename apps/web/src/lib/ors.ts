@@ -11,6 +11,7 @@ import {
   variantLengthM,
   type RouteVariant,
 } from "./route-variants";
+import { ensureRuntimeConfigLoaded } from "./runtime-config";
 import type { WizardState } from "./types";
 
 type OrsFeature = {
@@ -24,16 +25,19 @@ export async function fetchOrsVariant(
   wizard: WizardState,
   variant: RouteVariant,
 ): Promise<RawRoute | null> {
+  ensureRuntimeConfigLoaded();
   const apiKey = process.env.ORS_API_KEY;
   if (!apiKey) return null;
 
-  const cyclingProfile =
-    wizard.intensity === "tempo" || wizard.avoidBusyRoads === false
+  // Quiet rides → cycling-regular. Avoid pairing cycling-road with avoid_features
+  // (ORS returns 400: highways is not valid with cycling-road).
+  const cyclingProfile = wizard.avoidBusyRoads
+    ? "cycling-regular"
+    : wizard.intensity === "tempo"
       ? "cycling-road"
       : "cycling-regular";
 
   try {
-    // cycling-regular rejects avoid_features:highways; prefer quieter profile instead.
     const options: Record<string, unknown> = {
       round_trip: {
         length: Math.round(variantLengthM(wizard, variant)),
@@ -41,9 +45,6 @@ export async function fetchOrsVariant(
         seed: variant.seed,
       },
     };
-    if (wizard.avoidBusyRoads && cyclingProfile === "cycling-road") {
-      options.avoid_features = ["highways"];
-    }
 
     const res = await fetchWithTimeout(
       `https://api.openrouteservice.org/v2/directions/${cyclingProfile}/geojson`,
