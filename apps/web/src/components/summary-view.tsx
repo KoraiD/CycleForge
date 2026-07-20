@@ -202,11 +202,13 @@ export function SummaryView({
         <RouteRadar
           routes={plan.routes}
           selectedRouteId={selected.routeId}
+          wizard={plan.wizard}
           onSelect={(id) => {
             setSelectedId(id);
             setHoverKm(null);
             setPreviewRouteId(null);
           }}
+          onPreview={setPreviewRouteId}
         />
 
         <ScoreExplainDrawer route={selected} wizard={plan.wizard} />

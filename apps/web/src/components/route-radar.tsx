@@ -10,13 +10,18 @@ import {
   Tooltip,
 } from "recharts";
 import { ROUTE_COLORS } from "@/lib/constants";
-import type { RouteCandidate } from "@/lib/types";
+import { targetDistanceM, targetElevGainM } from "@/lib/scoring";
+import type { RouteCandidate, WizardState } from "@/lib/types";
 
 function formatDuration(seconds: number) {
   const h = Math.floor(seconds / 3600);
   const m = Math.round((seconds % 3600) / 60);
   if (h <= 0) return `${m}m`;
   return `${h}h ${m}m`;
+}
+
+function clamp01(n: number) {
+  return Math.max(0, Math.min(1, n));
 }
 
 function deltaLabel(
@@ -57,24 +62,37 @@ function Delta({
   );
 }
 
-type AxisKey = "goalFit" | "safetyProxy" | "scenicProxy" | "weatherFit" | "total";
+/** Per-route axes that actually differ between candidates (weather is shared — omit it). */
+function radarProfile(route: RouteCandidate, wizard: WizardState) {
+  const targetDist = targetDistanceM(wizard);
+  const targetClimb = targetElevGainM(wizard);
+  const distance = clamp01(
+    1 - Math.abs(route.distanceM - targetDist) / Math.max(targetDist, 1),
+  );
+  const climb = clamp01(
+    1 - Math.abs(route.elevGainM - targetClimb) / Math.max(targetClimb, 40),
+  );
+  return {
+    Distance: Math.round(distance * 100),
+    Climb: Math.round(climb * 100),
+    Quiet: Math.round(route.score.safetyProxy * 100),
+    Scenic: Math.round(route.score.scenicProxy * 100),
+    Fit: Math.round(route.score.total * 100),
+  };
+}
 
-const AXES: Array<{ key: AxisKey; label: string }> = [
-  { key: "goalFit", label: "Goal" },
-  { key: "safetyProxy", label: "Quiet" },
-  { key: "scenicProxy", label: "Scenic" },
-  { key: "weatherFit", label: "Weather" },
-  { key: "total", label: "Total" },
-];
+const AXIS_KEYS = ["Distance", "Climb", "Quiet", "Scenic", "Fit"] as const;
 
 export function RouteRadar({
   routes,
   selectedRouteId,
+  wizard,
   onSelect,
   onPreview,
 }: {
   routes: RouteCandidate[];
   selectedRouteId: string;
+  wizard: WizardState;
   onSelect: (routeId: string) => void;
   onPreview?: (routeId: string | null) => void;
 }) {
@@ -83,10 +101,14 @@ export function RouteRadar({
     routes.find((r) => r.routeId === selectedRouteId) ?? ranked[0] ?? null;
   const best = ranked[0] ?? null;
 
-  const chartData = AXES.map((axis) => {
-    const row: Record<string, string | number> = { axis: axis.label };
+  const profiles = new Map(
+    routes.map((route) => [route.routeId, radarProfile(route, wizard)]),
+  );
+
+  const chartData = AXIS_KEYS.map((axis) => {
+    const row: Record<string, string | number> = { axis };
     for (const route of routes) {
-      row[route.routeId] = Math.round(route.score[axis.key] * 100);
+      row[route.routeId] = profiles.get(route.routeId)?.[axis] ?? 0;
     }
     return row;
   });
@@ -109,6 +131,11 @@ export function RouteRadar({
           <h3 className="route-compare__title">
             {ranked.length} candidates · pick by fit, climb, or quiet roads
           </h3>
+          <p className="route-compare__lede">
+            Radar overlays every candidate: Distance &amp; Climb vs your goal,
+            Quiet roads, Scenic climb feel, and overall Fit. Colored outlines =
+            all three routes; filled shape = the one you selected.
+          </p>
         </div>
         {selected && best ? (
           <p className="route-compare__verdict">
@@ -137,17 +164,18 @@ export function RouteRadar({
       </header>
 
       <div className="route-compare__layout">
-        <div className="route-compare__chart" aria-hidden={false}>
-          <ResponsiveContainer width="100%" height={220}>
-            <RadarChart data={chartData}>
+        <div className="route-compare__chart">
+          <ResponsiveContainer width="100%" height={240}>
+            <RadarChart data={chartData} cx="50%" cy="50%" outerRadius="70%">
               <PolarGrid stroke="var(--line)" />
               <PolarAngleAxis
                 dataKey="axis"
                 tick={{ fill: "var(--muted)", fontSize: 11 }}
               />
               <PolarRadiusAxis
-                angle={30}
+                angle={90}
                 domain={[0, 100]}
+                tickCount={5}
                 tick={{ fill: "var(--muted)", fontSize: 10 }}
               />
               <Tooltip
@@ -158,21 +186,35 @@ export function RouteRadar({
                   fontSize: 12,
                 }}
               />
-              {routes.map((route, i) => (
-                <Radar
-                  key={route.routeId}
-                  name={route.label}
-                  dataKey={route.routeId}
-                  stroke={ROUTE_COLORS[i % ROUTE_COLORS.length]}
-                  fill={ROUTE_COLORS[i % ROUTE_COLORS.length]}
-                  fillOpacity={
-                    route.routeId === selectedRouteId ? 0.38 : 0.06
-                  }
-                  strokeWidth={route.routeId === selectedRouteId ? 2.75 : 1.15}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => onSelect(route.routeId)}
-                />
-              ))}
+              {/* Draw non-selected first so the active fill sits on top */}
+              {[...routes]
+                .sort((a, b) => {
+                  if (a.routeId === selectedRouteId) return 1;
+                  if (b.routeId === selectedRouteId) return -1;
+                  return 0;
+                })
+                .map((route) => {
+                  const i = routes.findIndex((r) => r.routeId === route.routeId);
+                  const active = route.routeId === selectedRouteId;
+                  return (
+                    <Radar
+                      key={route.routeId}
+                      name={route.label}
+                      dataKey={route.routeId}
+                      stroke={ROUTE_COLORS[i % ROUTE_COLORS.length]}
+                      fill={ROUTE_COLORS[i % ROUTE_COLORS.length]}
+                      fillOpacity={active ? 0.32 : 0.1}
+                      strokeWidth={active ? 2.75 : 1.75}
+                      strokeOpacity={active ? 1 : 0.85}
+                      dot={{
+                        r: active ? 3.5 : 2.5,
+                        fill: ROUTE_COLORS[i % ROUTE_COLORS.length],
+                      }}
+                      style={{ cursor: "pointer" }}
+                      onClick={() => onSelect(route.routeId)}
+                    />
+                  );
+                })}
             </RadarChart>
           </ResponsiveContainer>
           <div className="route-compare__chips">

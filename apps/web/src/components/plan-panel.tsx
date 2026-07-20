@@ -314,6 +314,7 @@ export function PlanPanel({
       <RouteRadar
         routes={plan.routes}
         selectedRouteId={selected.routeId}
+        wizard={plan.wizard}
         onSelect={handleSelect}
         onPreview={setPreviewRouteId}
       />
