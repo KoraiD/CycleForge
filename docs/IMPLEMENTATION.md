@@ -92,7 +92,7 @@ Status: **done** · **next** · **spike** · **stretch**
 | ID | Task | Status | Pri | Est. | Notes |
 | --- | --- | --- | --- | --- | --- |
 | A1 | Generating routes state | done | P0 | — | Visual pane steps |
-| A2 | Map hover ↔ elevation sync | next | P2 | 3h | Nice for video; overlaps H3 / K3 |
+| A2 | Map hover ↔ elevation sync | done | P2 | — | Covered by K3 |
 | A3 | Empty / error states | done | P0 | — | Soften further if new APIs fail |
 | A4 | Refine chips | done | P1 | — | Extend with richer tweaks (see H2) |
 | A5 | Prefetch weather on start change | next | P2 | 2h | CH weather grid available |
@@ -163,7 +163,7 @@ Status: **done** · **next** · **spike** · **stretch**
 | --- | --- | --- | --- | --- | --- |
 | **H1** | **More visual elements on suggested routes** | **done** | **P0** | — | S/F markers, wind badge, selection outline, source badges, fit control |
 | **H2** | **Richer in-result tweaking controls** | **done** | **P0** | — | Duration / intensity / terrain / quiet + Apply & regenerate (+ quick chips) |
-| H3 | Map hover ↔ elevation (A2) | next | P2 | 3h | Covered partly by K3 |
+| H3 | Map hover ↔ elevation (A2) | done | P2 | — | Covered by K3 |
 | H4 | Climb-segment coloring on map polyline | next | P1 | 3h | From elev profile; deferred after smoke |
 | H5 | Score ring / fit glyph on selected marker | next | P2 | 2h | Nice-to-have polish |
 
@@ -190,14 +190,15 @@ Polish how the product *feels* to use: clearer affordances, faster feedback, les
 | --- | --- | --- | --- | --- | --- |
 | **K1** | **Usability pass: layout, hierarchy, focus, disabled/busy states** | **done** | **P0** | — | Demo CTA, busy banners, disabled composer, keep plan while refining, compact wizard |
 | **K2** | **Interactive map: click route to select; start pin drag; better legends** | **done** | **P0** | — | Hit layers + legend/cards; draggable start pin; fit + source badges |
-| **K3** | **Linked interactions: map ↔ elevation ↔ route cards** | **next** | **P1** | **3h** | Hover/focus sync (includes A2/H3) |
+| **K3** | **Linked interactions: map ↔ elevation ↔ route cards** | **done** | **P1** | — | Shared hoverKm + preview route highlight |
 | **K4** | **Micro-feedback: toasts/inline status for geocode, generate, refine, export** | **next** | **P1** | **2h** | Especially when agent/tools are slow |
 | **K5** | **Responsive / touch: usable on laptop + phone demo** | **next** | **P1** | **3h** | Stack panes; larger tap targets |
 | K6 | Keyboard shortcuts / a11y basics (focus rings, labels) | next | P2 | 2h | Submit polish |
 | K7 | Motion polish (2–3 intentional transitions, not noise) | next | P2 | 2h | Align with brand motion rules |
-| **K8** | **Chat transcript declutter** (tool-name spam → progress chips) | **next** | **P1** | **2h** | Smoke: raw `upsert wizard state` / `refine plan` bubbles dominate |
-| **K9** | **Map chrome density** (hint / legend / wind / fit collide on small heights) | **next** | **P1** | **2h** | Collapse hint after first select; legend scroll |
+| **K8** | **Chat transcript declutter** (tool-name spam → progress chips) | **done** | **P1** | — | Text-only bubbles; progress chips while busy |
+| **K9** | **Map chrome density** (hint / legend / wind / fit collide on small heights) | **done** | **P1** | — | Toolbar chrome, dismissible hint, scrollable/hideable legend |
 | **K10** | **Start-preset vs custom pin coherence** after refine | **next** | **P2** | **1h** | Smoke: Map/address stays selected while label still “Vondelpark” |
+| **K11** | **Persist browser session across summary ↔ home** | **done** | **P1** | — | sessionStorage session id + hydrate plan/history on mount |
 
 ---
 
@@ -277,17 +278,16 @@ Deadline: **23 July AoE**. Protect P0; cut stretch without guilt.
 
 ### Done recently
 
-F1 logo · D4 map/address start · C6/C7 weather pipeline · **K1/K2** · **H1/H2** · **I1/I2** · **J1/J2/J3** · **G1/G2/G3** · B2/B6 Trigger fan-out + ingest · A1/A3/A4 polish  
+F1 logo · D4 map/address start · C6/C7 weather pipeline · **K1–K3/K8/K9** · **H1/H2** · **I1/I2** · **J1/J2/J3** · **G1/G2/G3** · B2/B6 Trigger fan-out + ingest · A1/A3/A4 polish  
 
 ### P0 — ship before video
 
 1. **B1/B5/E3/E4/E5** Deploy notes, video, public repo, form copy  
-2. **K8** chat declutter if video shows tool spam  
 
 ### P1 — if P0 on track
 
-- **K3/K4/K5/K8/K9** linked map↔chart, status toasts, responsive, chat declutter, map chrome  
-- H4 climb segments · B3, B4, C3, C4, D3, D5, G3, J3, A5  
+- **K4/K5** status toasts, responsive  
+- H4 climb segments · B3, B4, C3, C4, D3, D5, G5, A5  
 
 ### P2 / stretch
 
@@ -320,7 +320,7 @@ F1 logo · D4 map/address start · C6/C7 weather pipeline · **K1/K2** · **H1/H
 - [x] J1 GPX export  
 - [x] J2/J3 Summary page + session/`?route=` deep link  
 - [x] G1/G2/G3 Athlete fixture → CH `rider_history_rides` → coach note  
-- [ ] K8 Chat declutter (if time before video)  
+- [x] K3/K8/K9 UX polish (map↔elev sync, chat declutter, map chrome)  
 
 ### Final day / morning — Harden + submit
 

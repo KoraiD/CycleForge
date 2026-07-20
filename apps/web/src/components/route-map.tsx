@@ -1,10 +1,11 @@
 "use client";
 
 import { LngLatBounds } from "maplibre-gl";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Map, { Layer, Marker, Source, type MapRef } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { ROUTE_COLORS } from "@/lib/constants";
+import { nearestKmAlongLine, pointAtKm } from "@/lib/geometry";
 import type { RouteCandidate } from "@/lib/types";
 
 function endpoint(
@@ -35,12 +36,22 @@ export function RouteMap({
   routes,
   selectedRouteId,
   onSelect,
+  hoverKm = null,
+  onHoverKm,
+  previewRouteId = null,
+  onPreviewRoute,
 }: {
   routes: RouteCandidate[];
   selectedRouteId: string;
   onSelect: (routeId: string) => void;
+  hoverKm?: number | null;
+  onHoverKm?: (km: number | null) => void;
+  previewRouteId?: string | null;
+  onPreviewRoute?: (routeId: string | null) => void;
 }) {
   const mapRef = useRef<MapRef>(null);
+  const [hintVisible, setHintVisible] = useState(true);
+  const [legendOpen, setLegendOpen] = useState(true);
 
   const selected = useMemo(
     () => routes.find((r) => r.routeId === selectedRouteId) ?? routes[0],
@@ -59,6 +70,19 @@ export function RouteMap({
   const windDir = selected?.weather?.windDirDeg ?? 0;
   const windKmh = selected?.weather?.windKmh ?? 0;
 
+  const hoverPoint = useMemo(() => {
+    if (hoverKm === null || hoverKm === undefined || !selected) return null;
+    return pointAtKm(selected.geometry.coordinates, hoverKm);
+  }, [hoverKm, selected]);
+
+  useEffect(() => {
+    if (!hintVisible) return;
+    const t = window.setTimeout(() => setHintVisible(false), 5000);
+    return () => window.clearTimeout(t);
+  }, [hintVisible]);
+
+  const dismissHint = useCallback(() => setHintVisible(false), []);
+
   const fitAll = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -75,9 +99,36 @@ export function RouteMap({
   const onMapClick = (e: {
     features?: Array<{ properties?: Record<string, unknown> | null }>;
   }) => {
+    dismissHint();
     const feature = e.features?.[0];
     const id = feature?.properties?.id;
     if (typeof id === "string") onSelect(id);
+  };
+
+  const onMapMouseMove = (e: {
+    features?: Array<{ properties?: Record<string, unknown> | null }>;
+    lngLat: { lng: number; lat: number };
+  }) => {
+    const feature = e.features?.[0];
+    const id = feature?.properties?.id;
+    if (typeof id === "string") {
+      onPreviewRoute?.(id === selectedRouteId ? null : id);
+      if (id === selectedRouteId && selected) {
+        const km = nearestKmAlongLine(
+          selected.geometry.coordinates,
+          e.lngLat.lng,
+          e.lngLat.lat,
+        );
+        onHoverKm?.(km);
+      } else {
+        onHoverKm?.(null);
+      }
+    }
+  };
+
+  const onMapMouseLeave = () => {
+    onHoverKm?.(null);
+    onPreviewRoute?.(null);
   };
 
   return (
@@ -91,10 +142,13 @@ export function RouteMap({
         interactiveLayerIds={interactiveLayerIds}
         cursor="pointer"
         onClick={onMapClick}
+        onMouseMove={onMapMouseMove}
+        onMouseLeave={onMapMouseLeave}
         onLoad={fitAll}
       >
         {routes.map((route, index) => {
           const isSelected = route.routeId === selectedRouteId;
+          const isPreview = route.routeId === previewRouteId;
           const color = ROUTE_COLORS[index % ROUTE_COLORS.length];
           const feature = {
             type: "Feature" as const,
@@ -141,8 +195,8 @@ export function RouteMap({
                 type="line"
                 paint={{
                   "line-color": color,
-                  "line-width": isSelected ? 5.5 : 3,
-                  "line-opacity": isSelected ? 0.95 : 0.4,
+                  "line-width": isSelected ? 5.5 : isPreview ? 4 : 3,
+                  "line-opacity": isSelected ? 0.95 : isPreview ? 0.75 : 0.35,
                 }}
                 layout={{
                   "line-cap": "round",
@@ -167,66 +221,101 @@ export function RouteMap({
             </span>
           </Marker>
         )}
+        {hoverPoint && (
+          <Marker
+            longitude={hoverPoint[0]}
+            latitude={hoverPoint[1]}
+            anchor="center"
+          >
+            <span className="map-hover-dot" title="Elevation sync" />
+          </Marker>
+        )}
       </Map>
 
-      {windKmh > 0 && (
-        <div
-          className="wind-badge"
-          title={`Wind ${Math.round(windKmh)} km/h`}
-          style={{ ["--wind-rot" as string]: `${windDir}deg` }}
+      <div className="map-chrome">
+        {windKmh > 0 && (
+          <div
+            className="wind-badge"
+            title={`Wind ${Math.round(windKmh)} km/h`}
+            style={{ ["--wind-rot" as string]: `${windDir}deg` }}
+          >
+            <span className="wind-badge__arrow" aria-hidden>
+              ↑
+            </span>
+            <span>{Math.round(windKmh)} km/h</span>
+          </div>
+        )}
+        <button
+          type="button"
+          className="map-fit-btn"
+          onClick={fitAll}
+          title="Fit all routes"
         >
-          <span className="wind-badge__arrow" aria-hidden>
-            ↑
-          </span>
-          <span>{Math.round(windKmh)} km/h</span>
-        </div>
-      )}
-
-      <button
-        type="button"
-        className="map-fit-btn"
-        onClick={fitAll}
-        title="Fit all routes"
-      >
-        Fit
-      </button>
-
-      <div
-        className="route-map__legend"
-        role="listbox"
-        aria-label="Route candidates"
-      >
-        {routes.map((route, index) => {
-          const active = route.routeId === selectedRouteId;
-          return (
-            <button
-              key={route.routeId}
-              type="button"
-              role="option"
-              aria-selected={active}
-              className={active ? "active" : ""}
-              onClick={() => onSelect(route.routeId)}
-            >
-              <span
-                className="swatch"
-                style={{
-                  background: ROUTE_COLORS[index % ROUTE_COLORS.length],
-                }}
-              />
-              <span className="legend-label">{route.label}</span>
-              <span className="legend-fit">
-                {Math.round(route.score.total * 100)}
-              </span>
-              <span className={`legend-source legend-source--${route.source}`}>
-                {route.source}
-              </span>
-            </button>
-          );
-        })}
+          Fit
+        </button>
+        <button
+          type="button"
+          className="map-legend-toggle"
+          aria-expanded={legendOpen}
+          onClick={() => setLegendOpen((v) => !v)}
+        >
+          {legendOpen ? "Hide routes" : "Routes"}
+        </button>
       </div>
-      <p className="route-map__hint">
-        Click a route on the map or in the legend
-      </p>
+
+      {legendOpen ? (
+        <div
+          className="route-map__legend"
+          role="listbox"
+          aria-label="Route candidates"
+        >
+          {routes.map((route, index) => {
+            const active = route.routeId === selectedRouteId;
+            const preview = route.routeId === previewRouteId;
+            return (
+              <button
+                key={route.routeId}
+                type="button"
+                role="option"
+                aria-selected={active}
+                className={
+                  active ? "active" : preview ? "preview" : undefined
+                }
+                onClick={() => {
+                  dismissHint();
+                  onSelect(route.routeId);
+                }}
+                onMouseEnter={() =>
+                  onPreviewRoute?.(
+                    route.routeId === selectedRouteId ? null : route.routeId,
+                  )
+                }
+                onMouseLeave={() => onPreviewRoute?.(null)}
+              >
+                <span
+                  className="swatch"
+                  style={{
+                    background: ROUTE_COLORS[index % ROUTE_COLORS.length],
+                  }}
+                />
+                <span className="legend-label">{route.label}</span>
+                <span className="legend-fit">
+                  {Math.round(route.score.total * 100)}
+                </span>
+                <span className={`legend-source legend-source--${route.source}`}>
+                  {route.source}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {hintVisible ? (
+        <p className="route-map__hint">
+          Hover the route for elevation · click to select
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -8,6 +8,8 @@ import {
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   generateDemoPlan,
+  getPlanAction,
+  getSessionHistoryAction,
   loadDemoAthleteAction,
   mintChatAccessToken,
   selectRouteAction,
@@ -15,6 +17,7 @@ import {
   updateWizardAction,
 } from "@/app/actions";
 import type { cycleforgeAgent } from "@/trigger/cycleforge-agent";
+import { getOrCreateBrowserSessionId } from "@/lib/browser-session";
 import { attachCoachNote } from "@/lib/coach-note";
 import { START_PRESETS } from "@/lib/constants";
 import {
@@ -74,10 +77,32 @@ function extractFromMessages(messages: Msg[]): {
   return { plan, wizard, toolError, activities };
 }
 
+const TOOL_LABELS: Record<string, string> = {
+  upsert_wizard_state: "Updating goals",
+  load_demo_athlete: "Loading athlete",
+  generate_route_candidates: "Building routes",
+  refine_plan: "Refining plan",
+  select_route: "Selecting route",
+  score_and_enrich_routes: "Scoring in ClickHouse",
+};
+
+function toolProgressChips(activities: ToolActivity[]): string[] {
+  const seen = new Set<string>();
+  const chips: string[] = [];
+  for (const a of activities) {
+    const label = TOOL_LABELS[a.name] ?? a.name.replaceAll("_", " ");
+    if (seen.has(label)) continue;
+    seen.add(label);
+    chips.push(label);
+  }
+  return chips;
+}
+
 function generatingSteps(activities: ToolActivity[]): string[] {
   const names = new Set(activities.map((a) => a.name));
   const steps = ["Reading goals"];
   if (names.has("upsert_wizard_state")) steps.push("Updating wizard");
+  if (names.has("load_demo_athlete")) steps.push("Loading athlete history");
   if (
     names.has("generate_route_candidates") ||
     names.has("refine_plan")
@@ -90,7 +115,7 @@ function generatingSteps(activities: ToolActivity[]): string[] {
 }
 
 export function Chat() {
-  const [sessionId] = useState(() => crypto.randomUUID());
+  const [sessionId] = useState(() => getOrCreateBrowserSessionId());
   const [input, setInput] = useState("");
   const [localWizard, setLocalWizard] = useState<WizardState>(() =>
     DEFAULT_WIZARD(sessionId),
@@ -98,6 +123,7 @@ export function Chat() {
   const [wizardDirty, setWizardDirty] = useState(false);
   const [demoPlan, setDemoPlan] = useState<PlanPayload | null>(null);
   const [history, setHistory] = useState<HistoryContext | null>(null);
+  const [hydrated, setHydrated] = useState(false);
   const [agentConfigured, setAgentConfigured] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -125,6 +151,31 @@ export function Chat() {
       cancelled = true;
     };
   }, []);
+
+  // Restore plan/history after navigating back from /summary.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [storedPlan, storedHistory] = await Promise.all([
+          getPlanAction(sessionId),
+          getSessionHistoryAction(sessionId),
+        ]);
+        if (cancelled) return;
+        if (storedPlan) {
+          setDemoPlan(storedPlan);
+          setLocalWizard(storedPlan.wizard);
+          setWizardDirty(true);
+        }
+        if (storedHistory) setHistory(storedHistory);
+      } finally {
+        if (!cancelled) setHydrated(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
 
   const transport = useTriggerChatTransport<typeof cycleforgeAgent>({
     task: "cycleforge-agent",
@@ -341,6 +392,10 @@ export function Chat() {
     extracted.wizard || localWizard.goalsText || demoPlan,
   );
   const steps = generatingSteps(extracted.activities);
+  const progressChips = useMemo(
+    () => toolProgressChips(extracted.activities),
+    [extracted.activities],
+  );
 
   return (
     <div className="shell">
@@ -351,7 +406,7 @@ export function Chat() {
         </header>
 
         <div className="messages">
-          {messages.length === 0 && !demoPlan && (
+          {hydrated && messages.length === 0 && !demoPlan && (
             <div className="empty">
               <p>
                 Tell me a training goal or trip idea. I&apos;ll open a wizard,
@@ -399,29 +454,36 @@ export function Chat() {
           )}
 
           {busy && (
-            <p className="status-banner" role="status">
-              Working — routes and scores update when ready.
-            </p>
+            <div className="status-banner" role="status">
+              <p>Working — routes and scores update when ready.</p>
+              {progressChips.length > 0 ? (
+                <ul className="tool-progress" aria-label="Agent progress">
+                  {progressChips.map((label, i) => (
+                    <li
+                      key={label}
+                      className={i === progressChips.length - 1 ? "active" : "done"}
+                    >
+                      {label}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
           )}
 
-          {messages.map((m) => (
-            <div key={m.id} className={`bubble bubble--${m.role}`}>
-              {m.parts.map((part, i) => {
-                if (part.type === "text" && part.text.trim()) {
-                  return <p key={i}>{part.text}</p>;
-                }
-                if (part.type.startsWith("tool-")) {
-                  const name = part.type.replace("tool-", "");
-                  return (
-                    <p key={i} className="tool-note">
-                      {name.replaceAll("_", " ")}
-                    </p>
-                  );
-                }
-                return null;
-              })}
-            </div>
-          ))}
+          {messages.map((m) => {
+            const textParts = m.parts.filter(
+              (part) => part.type === "text" && part.text.trim(),
+            );
+            if (textParts.length === 0) return null;
+            return (
+              <div key={m.id} className={`bubble bubble--${m.role}`}>
+                {textParts.map((part, i) =>
+                  part.type === "text" ? <p key={i}>{part.text}</p> : null,
+                )}
+              </div>
+            );
+          })}
 
           {showWizard && (
             <Wizard
