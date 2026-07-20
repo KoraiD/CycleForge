@@ -27,7 +27,7 @@ export const generateRouteCandidatesTask = schemaTask({
       intensity: wizard.intensity,
     });
 
-    // Durable child task: parallel ORS fan-out lives inside fetch-ors-route-batch
+    // Durable fan-out: batch task runs 3 parallel `fetch-ors-route` children
     const result = await fetchOrsRouteBatch.triggerAndWait({ wizard });
     if (!result.ok) {
       throw new Error("ORS batch task failed");
@@ -36,6 +36,7 @@ export const generateRouteCandidatesTask = schemaTask({
     logger.info("Generated routes", {
       count: result.output.routes.length,
       sources: result.output.routes.map((r) => r.source),
+      sessionId: wizard.sessionId,
     });
     return { routes: result.output.routes };
   },

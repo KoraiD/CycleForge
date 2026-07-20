@@ -1,6 +1,14 @@
-import { buildElevProfile, elevGainLoss, lineDistanceM, syntheticLoop } from "./geometry";
+import {
+  buildElevProfile,
+  elevGainLoss,
+  lineDistanceM,
+  syntheticLoop,
+} from "./geometry";
 import { targetDistanceM, targetElevGainM } from "./scoring";
-import type { WizardState } from "./types";
+import type { StartPreset, WizardState } from "./types";
+import amstelGolden from "@/data/golden-routes/amstel.json";
+import centraalGolden from "@/data/golden-routes/centraal.json";
+import vondelparkGolden from "@/data/golden-routes/vondelpark.json";
 
 export type RawRoute = {
   label: string;
@@ -15,7 +23,28 @@ export type RawRoute = {
   source: "ors" | "fallback";
 };
 
-function finalize(label: string, profile: string, geometry: GeoJSON.LineString, busyPenalty: number, speedKmh: number): RawRoute {
+type GoldenFile = {
+  preset: string;
+  routes: Array<{
+    label: string;
+    profile: string;
+    geometry: GeoJSON.LineString;
+  }>;
+};
+
+const GOLDEN_BY_PRESET: Partial<Record<StartPreset, GoldenFile>> = {
+  centraal: centraalGolden as GoldenFile,
+  vondelpark: vondelparkGolden as GoldenFile,
+  amstel: amstelGolden as GoldenFile,
+};
+
+function finalize(
+  label: string,
+  profile: string,
+  geometry: GeoJSON.LineString,
+  busyPenalty: number,
+  speedKmh: number,
+): RawRoute {
   const coords = geometry.coordinates;
   const distanceM = lineDistanceM(coords);
   const { gain, loss } = elevGainLoss(coords);
@@ -33,17 +62,50 @@ function finalize(label: string, profile: string, geometry: GeoJSON.LineString, 
   };
 }
 
-/** Deterministic demo routes when ORS is unavailable. */
-export function buildFallbackRoutes(wizard: WizardState): RawRoute[] {
+function scaleGeometryElev(
+  geometry: GeoJSON.LineString,
+  factor: number,
+): GeoJSON.LineString {
+  if (factor === 1) return geometry;
+  return {
+    type: "LineString",
+    coordinates: geometry.coordinates.map((c) =>
+      c.length >= 3 ? [c[0], c[1], (c[2] ?? 0) * factor] : [...c],
+    ),
+  };
+}
+
+function buildGoldenRoutes(wizard: WizardState): RawRoute[] | null {
+  const file =
+    GOLDEN_BY_PRESET[wizard.startPreset] ?? GOLDEN_BY_PRESET.vondelpark;
+  if (!file?.routes?.length) return null;
+
+  const speed =
+    wizard.intensity === "easy" ? 20 : wizard.intensity === "tempo" ? 27 : 24;
+  const elevFactor =
+    wizard.terrainBias === "flat" ? 0.55 : wizard.terrainBias === "hilly" ? 1.55 : 1;
+
+  return file.routes.slice(0, 3).map((r, i) =>
+    finalize(
+      r.label,
+      r.profile,
+      scaleGeometryElev(r.geometry, elevFactor),
+      wizard.avoidBusyRoads ? 0.1 + i * 0.02 : 0.25,
+      speed,
+    ),
+  );
+}
+
+function buildSyntheticRoutes(wizard: WizardState): RawRoute[] {
   const targetKm = targetDistanceM(wizard) / 1000;
   const targetClimb = targetElevGainM(wizard);
   const speed =
     wizard.intensity === "easy" ? 20 : wizard.intensity === "tempo" ? 27 : 24;
 
   const radii = [
-    Math.max(targetKm / (2 * Math.PI) * 0.9, 2.5),
-    Math.max(targetKm / (2 * Math.PI) * 1.05, 3.2),
-    Math.max(targetKm / (2 * Math.PI) * 1.2, 4.0),
+    Math.max((targetKm / (2 * Math.PI)) * 0.9, 2.5),
+    Math.max((targetKm / (2 * Math.PI)) * 1.05, 3.2),
+    Math.max((targetKm / (2 * Math.PI)) * 1.2, 4.0),
   ];
 
   const climbAmps = [
@@ -85,4 +147,9 @@ export function buildFallbackRoutes(wizard: WizardState): RawRoute[] {
       speed,
     ),
   );
+}
+
+/** Cached ORS geometries when live ORS is unavailable; synthetic loops as last resort. */
+export function buildFallbackRoutes(wizard: WizardState): RawRoute[] {
+  return buildGoldenRoutes(wizard) ?? buildSyntheticRoutes(wizard);
 }

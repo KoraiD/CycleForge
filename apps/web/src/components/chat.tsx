@@ -19,12 +19,21 @@ import { Wizard } from "./wizard";
 
 type Msg = InferChatUIMessage<typeof cycleforgeAgent>;
 
+type ToolActivity = {
+  name: string;
+  state: string;
+};
+
 function extractFromMessages(messages: Msg[]): {
   plan: PlanPayload | null;
   wizard: WizardState | null;
+  toolError: string | null;
+  activities: ToolActivity[];
 } {
   let plan: PlanPayload | null = null;
   let wizard: WizardState | null = null;
+  let toolError: string | null = null;
+  const activities: ToolActivity[] = [];
 
   for (const message of messages) {
     for (const part of message.parts) {
@@ -36,16 +45,38 @@ function extractFromMessages(messages: Msg[]): {
           ui?: string;
           plan?: PlanPayload;
           wizard?: WizardState;
+          error?: string;
         };
       };
+      const name = toolPart.type.replace("tool-", "");
+      activities.push({ name, state: toolPart.state ?? "unknown" });
+
       if (toolPart.state && toolPart.state !== "output-available") continue;
       const output = toolPart.output;
       if (!output) continue;
+      if (output.ui === "error" && output.error) {
+        toolError = output.error;
+      }
       if (output.plan) plan = output.plan;
       if (output.wizard) wizard = output.wizard;
     }
   }
-  return { plan, wizard };
+  return { plan, wizard, toolError, activities };
+}
+
+function generatingSteps(activities: ToolActivity[]): string[] {
+  const names = new Set(activities.map((a) => a.name));
+  const steps = ["Reading goals"];
+  if (names.has("upsert_wizard_state")) steps.push("Updating wizard");
+  if (
+    names.has("generate_route_candidates") ||
+    names.has("refine_plan")
+  ) {
+    steps.push("Fetching routes (ORS fan-out)");
+    steps.push("Scoring in ClickHouse");
+  }
+  if (names.has("select_route")) steps.push("Selecting route");
+  return steps;
 }
 
 export function Chat() {
@@ -57,19 +88,25 @@ export function Chat() {
   const [wizardDirty, setWizardDirty] = useState(false);
   const [demoPlan, setDemoPlan] = useState<PlanPayload | null>(null);
   const [agentConfigured, setAgentConfigured] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
     let cancelled = false;
     void fetch("/api/health")
       .then((r) => r.json())
-      .then((health: { triggerConfigured?: boolean; openaiConfigured?: boolean }) => {
-        if (!cancelled) {
-          setAgentConfigured(
-            Boolean(health.triggerConfigured && health.openaiConfigured),
-          );
-        }
-      })
+      .then(
+        (health: {
+          triggerConfigured?: boolean;
+          googleConfigured?: boolean;
+        }) => {
+          if (!cancelled) {
+            setAgentConfigured(
+              Boolean(health.triggerConfigured && health.googleConfigured),
+            );
+          }
+        },
+      )
       .catch(() => {
         if (!cancelled) setAgentConfigured(false);
       });
@@ -97,9 +134,14 @@ export function Chat() {
     !wizardDirty && extracted.wizard ? extracted.wizard : localWizard;
 
   const busy = status === "streaming" || status === "submitted" || pending;
+  const displayError =
+    localError ??
+    extracted.toolError ??
+    (error ? "Agent transport error — switched to local demo path." : null);
 
   const submitText = (text: string) => {
     if (!text.trim()) return;
+    setLocalError(null);
     if (agentEnabled) {
       void sendMessage({ text });
     }
@@ -112,7 +154,7 @@ export function Chat() {
       const next = { ...base, ...patch };
       if (patch.startPreset && patch.startPreset !== "custom") {
         const presets = {
-          centraal: { lat: 52.3791, lng: 4.9003 },
+          centraal: { lat: 52.378, lng: 4.8985 },
           vondelpark: { lat: 52.3577, lng: 4.8686 },
           amstel: { lat: 52.3462, lng: 4.9179 },
         } as const;
@@ -128,6 +170,7 @@ export function Chat() {
   };
 
   const onConfirmWizard = () => {
+    setLocalError(null);
     startTransition(async () => {
       const confirmed = { ...wizard, confirmed: true };
       setLocalWizard(confirmed);
@@ -141,8 +184,14 @@ export function Chat() {
           setAgentConfigured(false);
         }
       }
-      const built = await generateDemoPlan(sessionId, confirmed);
-      setDemoPlan(built);
+      try {
+        const built = await generateDemoPlan(sessionId, confirmed);
+        setDemoPlan(built);
+      } catch (err) {
+        setLocalError(
+          err instanceof Error ? err.message : "Could not generate routes.",
+        );
+      }
     });
   };
 
@@ -155,10 +204,52 @@ export function Chat() {
     }
   };
 
+  const onRefine = (kind: "shorter" | "hillier" | "easier") => {
+    setLocalError(null);
+    const patch: Partial<WizardState> =
+      kind === "shorter"
+        ? { durationMin: Math.max(30, wizard.durationMin - 20) }
+        : kind === "hillier"
+          ? { terrainBias: "hilly", intensity: "hills" }
+          : { intensity: "easy", terrainBias: "flat" };
+
+    const nextWizard = { ...wizard, ...patch, confirmed: true };
+    setLocalWizard(nextWizard);
+    setWizardDirty(true);
+
+    startTransition(async () => {
+      if (agentEnabled) {
+        try {
+          await sendMessage({
+            text:
+              kind === "shorter"
+                ? "Make it shorter — about 20 minutes less."
+                : kind === "hillier"
+                  ? "Make it hillier — more climbing."
+                  : "Make it easier — flatter and recovery pace.",
+          });
+          return;
+        } catch {
+          setAgentConfigured(false);
+        }
+      }
+      try {
+        const built = await generateDemoPlan(sessionId, nextWizard);
+        setDemoPlan(built);
+        setLocalWizard(built.wizard);
+      } catch (err) {
+        setLocalError(
+          err instanceof Error ? err.message : "Refine failed.",
+        );
+      }
+    });
+  };
+
   const runQuickDemo = () => {
     const prompt =
       "I have 90 minutes tomorrow morning near Amsterdam — endurance ride, some hills if possible, avoid busy roads.";
     setInput("");
+    setLocalError(null);
     setWizardDirty(true);
     setLocalWizard((w) => ({ ...w, goalsText: prompt }));
     startTransition(async () => {
@@ -166,27 +257,38 @@ export function Chat() {
         try {
           await sendMessage({ text: prompt });
           return;
-        } catch {
+        } catch (err) {
+          console.warn("Agent demo send failed, falling back", err);
           setAgentConfigured(false);
         }
       }
-      const built = await generateDemoPlan(sessionId, {
-        goalsText: prompt,
-        durationMin: 90,
-        intensity: "endurance",
-        terrainBias: "rolling",
-        startPreset: "vondelpark",
-        avoidBusyRoads: true,
-        confirmed: true,
-      });
-      setDemoPlan(built);
-      setLocalWizard(built.wizard);
+      try {
+        const built = await generateDemoPlan(sessionId, {
+          goalsText: prompt,
+          durationMin: 90,
+          intensity: "endurance",
+          terrainBias: "rolling",
+          startPreset: "vondelpark",
+          avoidBusyRoads: true,
+          confirmed: true,
+        });
+        setDemoPlan(built);
+        setLocalWizard(built.wizard);
+      } catch (err) {
+        console.error("Demo plan generation failed", err);
+        setLocalError(
+          err instanceof Error
+            ? err.message
+            : "Demo plan generation failed. Check ORS / ClickHouse keys.",
+        );
+      }
     });
   };
 
   const showWizard = Boolean(
     extracted.wizard || localWizard.goalsText || demoPlan,
   );
+  const steps = generatingSteps(extracted.activities);
 
   return (
     <div className="shell">
@@ -236,6 +338,12 @@ export function Chat() {
               busy={busy}
             />
           )}
+
+          {displayError && (
+            <p className="error-banner" role="alert">
+              {displayError}
+            </p>
+          )}
         </div>
 
         <form
@@ -249,12 +357,20 @@ export function Chat() {
             submitText(text);
             if (!agentEnabled) {
               startTransition(async () => {
-                const built = await generateDemoPlan(sessionId, {
-                  goalsText: text,
-                  confirmed: true,
-                });
-                setDemoPlan(built);
-                setLocalWizard(built.wizard);
+                try {
+                  const built = await generateDemoPlan(sessionId, {
+                    goalsText: text,
+                    confirmed: true,
+                  });
+                  setDemoPlan(built);
+                  setLocalWizard(built.wizard);
+                } catch (err) {
+                  setLocalError(
+                    err instanceof Error
+                      ? err.message
+                      : "Could not build a local plan.",
+                  );
+                }
               });
             }
             setInput("");
@@ -273,15 +389,43 @@ export function Chat() {
 
         {!agentEnabled && (
           <p className="mode-note">
-            Running in local demo mode (Trigger/OpenAI unavailable). Routes still
-            generate via fallback + ClickHouse helpers.
+            Running in local demo mode (Trigger/Google AI unavailable). Routes
+            still generate via golden/fallback geometry + ClickHouse helpers.
           </p>
         )}
       </aside>
 
       <main className="visual-pane">
         {plan ? (
-          <PlanPanel plan={plan} onSelectRoute={onSelectRoute} />
+          <PlanPanel
+            key={`${plan.sessionId}-${plan.routes.map((r) => r.routeId).join("-")}`}
+            plan={plan}
+            onSelectRoute={onSelectRoute}
+            onRefine={onRefine}
+            refining={busy}
+          />
+        ) : busy ? (
+          <div className="visual-generating" aria-live="polite">
+            <p className="brand">CycleForge</p>
+            <h1>Generating routes…</h1>
+            <p>Durable Trigger tasks are fanning out ORS and scoring.</p>
+            <ol className="gen-steps">
+              {steps.map((step, i) => (
+                <li key={step} className={i === steps.length - 1 ? "active" : ""}>
+                  {step}
+                </li>
+              ))}
+            </ol>
+          </div>
+        ) : displayError ? (
+          <div className="visual-empty visual-empty--error">
+            <p className="brand">CycleForge</p>
+            <h1>Couldn&apos;t build the plan</h1>
+            <p>{displayError}</p>
+            <button type="button" className="ghost" onClick={runQuickDemo}>
+              Retry demo prompt
+            </button>
+          </div>
         ) : (
           <div className="visual-empty">
             <p className="brand">CycleForge</p>

@@ -80,7 +80,7 @@ export function mergeWizard(
   const next = { ...current, ...patch, sessionId: current.sessionId };
   if (patch.startPreset && patch.startPreset !== "custom") {
     const presets = {
-      centraal: { lat: 52.3791, lng: 4.9003 },
+      centraal: { lat: 52.378, lng: 4.8985 },
       vondelpark: { lat: 52.3577, lng: 4.8686 },
       amstel: { lat: 52.3462, lng: 4.9179 },
     } as const;

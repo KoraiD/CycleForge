@@ -1,5 +1,5 @@
 import { chat } from "@trigger.dev/sdk/ai";
-import { openai } from "@ai-sdk/openai";
+import { google } from "@ai-sdk/google";
 import { streamText, stepCountIs, tool } from "ai";
 import { z } from "zod";
 import { AGENT_SYSTEM_PROMPT } from "@/lib/constants";
@@ -171,7 +171,9 @@ export const cycleforgeAgent = chat
 
       return streamText({
         ...chat.toStreamTextOptions({ tools: resolvedTools }),
-        model: openai(process.env.OPENAI_MODEL || "gpt-4o-mini"),
+        model: google(
+          process.env.GOOGLE_GENERATIVE_AI_MODEL || "gemini-flash-latest",
+        ),
         system: AGENT_SYSTEM_PROMPT,
         messages,
         abortSignal: signal,

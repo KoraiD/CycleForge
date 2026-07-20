@@ -17,7 +17,7 @@
     "seed:clickhouse": "node scripts/seed-clickhouse.mjs"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^4.0.16",
+    "@ai-sdk/google": "^4.0.18",
     "@ai-sdk/react": "^4.0.34",
     "@clickhouse/client": "^1.23.1",
     "@trigger.dev/build": "^4.5.4",

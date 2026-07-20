@@ -32,7 +32,7 @@ export async function mintChatAccessToken(chatId: string) {
   });
 }
 
-/** Local/demo path when Trigger/OpenAI are not configured. */
+/** Local/demo path when Trigger/Google AI are not configured. */
 export async function generateDemoPlan(
   sessionId: string,
   patch: Partial<WizardState> = {},
