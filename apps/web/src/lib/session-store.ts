@@ -1,6 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from "fs";
 import { join } from "path";
-import { cachePlan, readCachedPlan } from "./plan-cache";
+import { cachePlan, clearCachedPlan, readCachedPlan } from "./plan-cache";
 import { DEFAULT_WIZARD, type PlanPayload, type WizardState } from "./types";
 
 const globalStore = globalThis as typeof globalThis & {
@@ -69,4 +75,18 @@ export function setSessionAthlete(sessionId: string, athleteId: string): void {
 
 export function getSessionAthlete(sessionId: string): string | undefined {
   return athletes.get(sessionId) ?? readCachedAthlete(sessionId);
+}
+
+/** Clear in-memory + on-disk session state (reset demo). */
+export function clearSession(sessionId: string): void {
+  wizards.delete(sessionId);
+  plans.delete(sessionId);
+  athletes.delete(sessionId);
+  clearCachedPlan(sessionId);
+  try {
+    const athletePath = join(ATHLETE_DIR, `${sessionId}.txt`);
+    if (existsSync(athletePath)) unlinkSync(athletePath);
+  } catch (err) {
+    console.warn("clearSession athlete binding failed", err);
+  }
 }

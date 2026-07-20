@@ -23,6 +23,7 @@ import {
   loadDemoAthleteAction,
   mintChatAccessToken,
   persistPlanAction,
+  resetSessionAction,
   selectRouteAction,
   startChatSession,
   updateWizardAction,
@@ -30,10 +31,14 @@ import {
 } from "@/app/actions";
 import type { TrainingBlockPlan } from "@/lib/training-block-plan";
 import type { cycleforgeAgent } from "@/trigger/cycleforge-agent";
-import { getOrCreateBrowserSessionId } from "@/lib/browser-session";
+import {
+  clearBrowserSessionId,
+  getOrCreateBrowserSessionId,
+} from "@/lib/browser-session";
 import { attachCoachNote } from "@/lib/coach-note";
 import { START_PRESETS } from "@/lib/constants";
 import { friendlyErrorMessage } from "@/lib/friendly-error";
+import { parseGoalPrompt } from "@/lib/parse-goal";
 import {
   DEFAULT_WIZARD,
   type HistoryContext,
@@ -46,6 +51,13 @@ import { TriggerFanout } from "./trigger-fanout";
 import { Wizard } from "./wizard";
 
 type Msg = InferChatUIMessage<typeof cycleforgeAgent>;
+
+const LOCAL_GEN_STEPS = [
+  "Reading your goal…",
+  "Fetching route candidates…",
+  "Weather + scoring…",
+  "Building the visual plan…",
+];
 
 function planRouteKey(plan: PlanPayload): string {
   return plan.routes.map((r) => r.routeId).join("|");
@@ -151,6 +163,8 @@ export function Chat() {
     null,
   );
   const [blockBusy, setBlockBusy] = useState(false);
+  const [localStep, setLocalStep] = useState(0);
+  const [resetting, setResetting] = useState(false);
   const gpxInputRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
   /** Route-id fingerprints already shown — avoids agent plans being shadowed by stale demoPlan. */
@@ -289,6 +303,24 @@ export function Chat() {
   const agentEnabled = agentConfigured && !error;
   const extracted = useMemo(() => extractFromMessages(messages), [messages]);
 
+  const generating =
+    pending || status === "streaming" || status === "submitted";
+
+  useEffect(() => {
+    if (!generating || selectingRoute) {
+      const clear = window.setTimeout(() => setLocalStep(0), 0);
+      return () => window.clearTimeout(clear);
+    }
+    const start = window.setTimeout(() => setLocalStep(0), 0);
+    const id = window.setInterval(() => {
+      setLocalStep((s) => Math.min(s + 1, LOCAL_GEN_STEPS.length - 1));
+    }, 1400);
+    return () => {
+      window.clearTimeout(start);
+      window.clearInterval(id);
+    };
+  }, [generating, selectingRoute]);
+
   // Adopt new agent tool plans (regenerate/refine) that would otherwise be
   // shadowed by a stale demoPlan from hydration or a previous local build.
   useEffect(() => {
@@ -309,7 +341,7 @@ export function Chat() {
   const wizard =
     !wizardDirty && extracted.wizard ? extracted.wizard : localWizard;
 
-  const busy = status === "streaming" || status === "submitted" || pending;
+  const busy = generating;
   const agentTransportError = error
     ? friendlyErrorMessage(
         error,
@@ -534,15 +566,23 @@ export function Chat() {
     setInput("");
     setLocalError(null);
     setWizardDirty(true);
-    setLocalWizard((w) => ({ ...w, goalsText: prompt }));
+    const parsed = parseGoalPrompt(prompt);
+    setLocalWizard((w) => ({
+      ...w,
+      ...parsed,
+      goalsText: prompt,
+      startPreset: "custom",
+      startLat: 52.3577,
+      startLng: 4.8686,
+      startLabel: "Vondelpark",
+      avoidBusyRoads: true,
+    }));
     startTransition(async () => {
       // Local plan first so a Trigger/network blip never blocks the UI.
       try {
         const built = await generateDemoPlan(sessionId, {
+          ...parsed,
           goalsText: prompt,
-          durationMin: 90,
-          intensity: "endurance",
-          terrainBias: "rolling",
           startPreset: "custom",
           startLat: 52.3577,
           startLng: 4.8686,
@@ -577,6 +617,30 @@ export function Chat() {
     () => toolProgressChips(extracted.activities),
     [extracted.activities],
   );
+  const liveSteps =
+    progressChips.length > 0
+      ? progressChips
+      : LOCAL_GEN_STEPS.slice(0, Math.max(1, localStep + 1));
+
+  const resetDemo = () => {
+    if (
+      !window.confirm(
+        "Reset demo? This clears the current plan, wizard, and athlete binding for this tab.",
+      )
+    ) {
+      return;
+    }
+    setResetting(true);
+    startTransition(async () => {
+      try {
+        await resetSessionAction(sessionId);
+      } catch {
+        /* still reload to a clean client */
+      }
+      clearBrowserSessionId();
+      window.location.href = "/";
+    });
+  };
 
   return (
     <div
@@ -588,6 +652,14 @@ export function Chat() {
           <div className="chat-pane__brand-row">
             <BrandMark withWordmark size={32} />
             <nav className="chat-nav" aria-label="App">
+              <button
+                type="button"
+                className="ghost chat-stack-link"
+                disabled={busy || resetting}
+                onClick={resetDemo}
+              >
+                {resetting ? "Resetting…" : "Reset demo"}
+              </button>
               <Link href="/setup" className="ghost chat-stack-link">
                 Setup
               </Link>
@@ -683,29 +755,27 @@ export function Chat() {
           />
 
           {(busy || selectingRoute) && (
-            <div className="status-banner" role="status">
+            <div className="status-banner" role="status" aria-live="polite">
               <p>
                 {selectingRoute
                   ? "Switching route — updating map and coach note…"
-                  : "Working — routes and scores update when ready."}
+                  : `${LOCAL_GEN_STEPS[localStep] ?? "Working…"} Hang tight.`}
               </p>
-              {!selectingRoute && progressChips.length > 0 ? (
-                <ul className="tool-progress" aria-label="Agent progress">
-                  {progressChips.map((label, i) => (
+              {!selectingRoute ? (
+                <ul className="tool-progress" aria-label="Generation progress">
+                  {liveSteps.map((label, i) => (
                     <li
                       key={label}
-                      className={i === progressChips.length - 1 ? "active" : "done"}
+                      className={i === liveSteps.length - 1 ? "active" : "done"}
                     >
                       {label}
                     </li>
                   ))}
                 </ul>
               ) : null}
-              {selectingRoute ? (
-                <div className="route-select-progress route-select-progress--inline">
-                  <span className="route-select-spinner" aria-hidden />
-                </div>
-              ) : null}
+              <div className="route-select-progress route-select-progress--inline">
+                <span className="route-select-spinner" aria-hidden />
+              </div>
             </div>
           )}
 
@@ -747,13 +817,16 @@ export function Chat() {
             e.preventDefault();
             const text = input.trim();
             if (!text) return;
+            const parsed = parseGoalPrompt(text);
             setWizardDirty(true);
-            setLocalWizard((w) => ({ ...w, goalsText: text }));
+            setLocalWizard((w) => ({ ...w, ...parsed, goalsText: text }));
+            setLocalError(null);
             submitText(text);
             // Always rebuild locally so the visual pane updates; agent is additive.
             startTransition(async () => {
               try {
                 const built = await generateDemoPlan(sessionId, {
+                  ...parsed,
                   goalsText: text,
                   confirmed: true,
                 });
@@ -761,9 +834,7 @@ export function Chat() {
                 setLocalWizard(built.wizard);
               } catch (err) {
                 setLocalError(
-                  err instanceof Error
-                    ? err.message
-                    : "Could not build a local plan.",
+                  friendlyErrorMessage(err, "Could not build a local plan."),
                 );
               }
             });
@@ -808,18 +879,15 @@ export function Chat() {
       />
 
       <main className="visual-pane">
-        {plan ? (
-          <div
-            className={busy ? "plan-refining" : undefined}
-            aria-busy={busy}
-          >
+        {plan && !(busy && !selectingRoute) ? (
+          <div aria-busy={selectingRoute}>
             <PlanPanel
               key={`${plan.sessionId}-${plan.routes.map((r) => r.routeId).join("-")}-${plan.historyContext?.athleteId ?? "none"}`}
               plan={plan}
               onSelectRoute={onSelectRoute}
               onRefine={onRefine}
               onApplyTweaks={onApplyTweaks}
-              refining={busy && !selectingRoute}
+              refining={false}
               selectingRoute={selectingRoute}
               trainingBlock={trainingBlock}
               onCreateTrainingBlock={onCreateTrainingBlock}
@@ -830,19 +898,40 @@ export function Chat() {
         ) : busy ? (
           <div className="visual-generating" aria-live="polite">
             <BrandMark withWordmark size={36} />
-            <h1>Generating routes…</h1>
-            <p>Durable Trigger tasks are fanning out ORS and scoring.</p>
+            <h1>Working on your plan…</h1>
+            <p className="gen-current">{LOCAL_GEN_STEPS[localStep]}</p>
             <div className="gen-progress" aria-hidden>
               <span className="route-select-spinner" />
             </div>
             <TriggerFanout activities={extracted.activities} />
             <ol className="gen-steps">
-              {steps.map((step, i) => (
-                <li key={step} className={i === steps.length - 1 ? "active" : ""}>
-                  {step}
-                </li>
-              ))}
+              {(progressChips.length > 0 ? steps : LOCAL_GEN_STEPS).map(
+                (step, i) => (
+                  <li
+                    key={step}
+                    className={
+                      progressChips.length > 0
+                        ? i === steps.length - 1
+                          ? "active"
+                          : ""
+                        : i === localStep
+                          ? "active"
+                          : i < localStep
+                            ? "done"
+                            : ""
+                    }
+                  >
+                    {step}
+                  </li>
+                ),
+              )}
             </ol>
+            {plan ? (
+              <p className="muted gen-note">
+                Updating from your latest goal — previous map stays until the
+                new routes are ready.
+              </p>
+            ) : null}
           </div>
         ) : displayError ? (
           <div className="visual-empty visual-empty--error">

@@ -17,8 +17,10 @@ import {
 } from "@/lib/clickhouse";
 import { attachCoachNote } from "@/lib/coach-note";
 import { parseGpxRide } from "@/lib/parse-gpx";
+import { parseGoalPrompt } from "@/lib/parse-goal";
 import { buildPlan, mergeWizard } from "@/lib/plan-builder";
 import {
+  clearSession,
   getPlan,
   getSessionAthlete,
   getWizard,
@@ -69,11 +71,25 @@ export async function generateDemoPlan(
   patch: Partial<WizardState> = {},
 ): Promise<PlanPayload> {
   const base = getWizard(sessionId) ?? DEFAULT_WIZARD(sessionId);
-  const wizard = mergeWizard(base, { ...patch, confirmed: true });
+  const fromText =
+    typeof patch.goalsText === "string" && patch.goalsText.trim()
+      ? parseGoalPrompt(patch.goalsText)
+      : {};
+  // Explicit patch fields win over text parsing.
+  const wizard = mergeWizard(base, {
+    ...fromText,
+    ...patch,
+    confirmed: true,
+  });
   setWizard(wizard);
   const plan = await buildPlan(wizard);
   setPlan(plan);
   return plan;
+}
+
+/** Wipe plan/wizard/athlete for this browser session (demo reset). */
+export async function resetSessionAction(sessionId: string): Promise<void> {
+  clearSession(sessionId);
 }
 
 export async function updateWizardAction(
