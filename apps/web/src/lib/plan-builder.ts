@@ -1,9 +1,15 @@
 import { randomUUID } from "crypto";
-import { findSimilarRides, persistRoutes, upsertSession } from "./clickhouse";
+import {
+  findSimilarRides,
+  getHistoryContext,
+  persistRoutes,
+  upsertSession,
+} from "./clickhouse";
 import { attachCoachNote } from "./coach-note";
 import { START_PRESETS } from "./constants";
 import { generateRawRoutes } from "./ors";
 import { scoreRoute } from "./scoring";
+import { getSessionAthlete } from "./session-store";
 import { buildTips, comparisonFromRoutes } from "./tips";
 import { estimateTraining } from "./training";
 import type { PlanPayload, RouteCandidate, WizardState } from "./types";
@@ -12,6 +18,10 @@ import { resolveWeather } from "./weather";
 export async function buildPlan(wizard: WizardState): Promise<PlanPayload> {
   await upsertSession(wizard, wizard.goalsText);
   const weather = await resolveWeather(wizard.startLat, wizard.startLng);
+  const athleteId = getSessionAthlete(wizard.sessionId);
+  const historyContext = athleteId
+    ? ((await getHistoryContext(athleteId)) ?? undefined)
+    : undefined;
   const rawRoutes = await generateRawRoutes(wizard);
 
   const routes: RouteCandidate[] = [];
@@ -71,6 +81,7 @@ export async function buildPlan(wizard: WizardState): Promise<PlanPayload> {
     wizard,
     routes,
     selectedRouteId: routes[0]?.routeId ?? "",
+    historyContext,
     comparison: comparisonFromRoutes(routes),
   });
 }

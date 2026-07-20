@@ -69,6 +69,7 @@ This document is the working plan for finishing, hardening, demoing, and submitt
 - Wizard collapses once a plan exists (tweak panel owns refine)  
 - `plan.coachNote` coaching card + Download GPX for selected route  
 - Summary page `/summary/[sessionId]?route=` (print/PDF + copy link)  
+- Demo athlete fixture → `rider_history_rides` + history-aware coach note  
 - Local demo mode when Trigger/Google missing  
 - Vitest + ESLint + GitHub Actions CI  
 - Run guide: [`docs/RUN.md`](RUN.md)  
@@ -150,10 +151,11 @@ Status: **done** · **next** · **spike** · **stretch**
 
 | ID | Task | Status | Pri | Est. | Notes |
 | --- | --- | --- | --- | --- | --- |
-| **G1** | **Spike: TrainingPeaks / Garmin / Strava / Apple Health** | **spike** | **P0** | **0.5–1d** | Feasibility for *quick demo* import of last ~2–4 weeks (see §4.3) |
-| G2 | Choose **one** demo path + fixture fallback | next | P0 | 0.5d | After spike; never block demo on live OAuth |
-| G3 | Store normalized rides in CH; agent uses volume/intensity trends | next | P1 | 4h | Depends on G2 |
+| **G1** | **Spike: TrainingPeaks / Garmin / Strava / Apple Health** | **done** | **P0** | — | Verdict in §4.3 — fixture path for hackathon |
+| **G2** | Choose **one** demo path + fixture fallback | **done** | **P0** | — | `demo-ams-rider` fixture + Load demo athlete CTA / agent tool |
+| **G3** | Store normalized rides in CH; agent uses volume/intensity trends | **done** | **P1** | — | `rider_history_rides` + historyContext → coach note / soft intensity nudge |
 | G4 | Full OAuth product for all platforms | stretch | P3 | — | Post-hackathon |
+| G5 | Manual GPX/FIT upload into `rider_history_rides` | stretch | P2 | 4h | Nice follow-on; not required for video |
 
 ### H — Richer plan visuals & tweaks
 
@@ -245,21 +247,18 @@ Until D4 is fully global: ingest **Amsterdam metro** thoroughly; optionally 1–
 
 ---
 
-## 4.3 Athlete data spike (G1) — investigation brief
+## 4.3 Athlete data spike (G1) — findings (20 Jul 2026)
 
-| Platform | Likely demo path | Friction | Verdict to decide after spike |
+| Platform | Likely demo path | Friction | Verdict |
 | --- | --- | --- | --- |
-| **Strava** | OAuth + Activities API | App review, tokens, rate limits | Possible if API app already exists; else heavy |
-| **Garmin** | Garmin Connect export / Health API | Partner program often slow | Unlikely for 48h unless manual FIT/GPX |
-| **TrainingPeaks** | API / export | Partner access | Likely **manual GPX/TCX/FIT upload** for demo |
-| **Apple Health** | HealthKit — **iOS only**, not a web API | No direct browser access | Use **exported workouts** or skip for web demo |
+| **Strava** | OAuth + Activities API | App review, refresh tokens, rate limits, webhook optional | **Skip for submit** unless a pre-approved app already exists |
+| **Garmin** | Connect export / Health API | Partner program latency | **Skip** for 48h window |
+| **TrainingPeaks** | Partner API / manual export | Access + parsing | **Defer**; manual export could feed G5 later |
+| **Apple Health** | HealthKit | **iOS only** — no web API | **Out of scope** for Next.js demo |
 
-**Recommended hackathon stance (pending spike confirmation):**
+**Hackathon decision (G2):** ship a **fixture demo athlete** (`demo-ams-rider`, 14 rides / ~3 weeks) into ClickHouse `rider_history_rides`, with UI **Load demo athlete history** + agent tool `load_demo_athlete`. Never block the main route demo on live OAuth. Optional later: GPX upload (G5).
 
-1. Ship **“Import last weeks (demo)”** as: upload GPX/FIT *or* load a **fixture athlete** (2–4 weeks synthetic/real anonymized rides) into `rider_history_rides`.  
-2. If one OAuth (e.g. Strava) is already available to the team, wire it behind a feature flag.  
-3. Agent uses aggregates: weekly hours, recent TSS, last hard day → adjust intensity defaults + coach note.  
-4. Never block the main demo on live athlete OAuth.
+**How coaching uses it (G3):** `historyContext` on the plan (hours/TSS last 7d & 28d, last hard day, load hint) → coach note + soft intensity nudge when load is high.
 
 ---
 
@@ -278,12 +277,12 @@ Deadline: **23 July AoE**. Protect P0; cut stretch without guilt.
 
 ### Done recently
 
-F1 logo · D4 map/address start · C6/C7 weather pipeline · **K1/K2** · **H1/H2** · **I1/I2** · **J1/J2/J3** · B2/B6 Trigger fan-out + ingest · A1/A3/A4 polish  
+F1 logo · D4 map/address start · C6/C7 weather pipeline · **K1/K2** · **H1/H2** · **I1/I2** · **J1/J2/J3** · **G1/G2/G3** · B2/B6 Trigger fan-out + ingest · A1/A3/A4 polish  
 
 ### P0 — ship before video
 
-1. **G1→G2** Athlete history spike → one demo import/fixture path  
-2. **B1/B5/E3/E4/E5** Deploy notes, video, public repo, form copy  
+1. **B1/B5/E3/E4/E5** Deploy notes, video, public repo, form copy  
+2. **K8** chat declutter if video shows tool spam  
 
 ### P1 — if P0 on track
 
@@ -313,14 +312,14 @@ F1 logo · D4 map/address start · C6/C7 weather pipeline · **K1/K2** · **H1/H
 - [x] C7 Plan-time SQL match weather/context → scores + tips  
 - [x] K1/K2 Usability + interactive map  
 - [x] H1/H2 Richer visuals + in-result tweaks  
-- [ ] G1 Spike note: athlete platforms (write findings in this doc §4.3)  
+- [x] G1 Spike note: athlete platforms (write findings in this doc §4.3)  
 
 ### Day N+3 — Coach + export + history
 
 - [x] I1/I2 Coach suggestion field + UI card (chat stays short)  
 - [x] J1 GPX export  
 - [x] J2/J3 Summary page + session/`?route=` deep link  
-- [ ] G1/G2 Athlete history spike → fixture or single import  
+- [x] G1/G2/G3 Athlete fixture → CH `rider_history_rides` → coach note  
 - [ ] K8 Chat declutter (if time before video)  
 
 ### Final day / morning — Harden + submit
@@ -454,7 +453,7 @@ Chat text stays short (1–2 sentences). Longer coaching lives on `plan.coachNot
 | --- | --- | --- |
 | 20 Jul | Google AI Studio instead of OpenAI | Shipped (PR #1) |
 | 20 Jul | Expand beyond AMS-only; CH pipeline; GPX/summary; logo; athlete spike | Plan updated (this doc) |
-| TBD | Athlete platform for demo | *pending G1* |
+| 20 Jul | Athlete platform for demo | **Fixture `demo-ams-rider`** (no live OAuth) |
 | TBD | Geocoder choice (ORS vs Nominatim) | *pending D4* |
 
 ---

@@ -8,6 +8,7 @@ import {
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   generateDemoPlan,
+  loadDemoAthleteAction,
   mintChatAccessToken,
   selectRouteAction,
   startChatSession,
@@ -16,7 +17,12 @@ import {
 import type { cycleforgeAgent } from "@/trigger/cycleforge-agent";
 import { attachCoachNote } from "@/lib/coach-note";
 import { START_PRESETS } from "@/lib/constants";
-import { DEFAULT_WIZARD, type PlanPayload, type WizardState } from "@/lib/types";
+import {
+  DEFAULT_WIZARD,
+  type HistoryContext,
+  type PlanPayload,
+  type WizardState,
+} from "@/lib/types";
 import { BrandMark } from "./brand-mark";
 import { PlanPanel, type PlanTweak } from "./plan-panel";
 import { Wizard } from "./wizard";
@@ -91,6 +97,7 @@ export function Chat() {
   );
   const [wizardDirty, setWizardDirty] = useState(false);
   const [demoPlan, setDemoPlan] = useState<PlanPayload | null>(null);
+  const [history, setHistory] = useState<HistoryContext | null>(null);
   const [agentConfigured, setAgentConfigured] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -133,7 +140,11 @@ export function Chat() {
 
   const agentEnabled = agentConfigured && !error;
   const extracted = useMemo(() => extractFromMessages(messages), [messages]);
-  const plan = demoPlan ?? extracted.plan;
+  const rawPlan = demoPlan ?? extracted.plan;
+  const plan =
+    rawPlan && history
+      ? { ...rawPlan, historyContext: rawPlan.historyContext ?? history }
+      : rawPlan;
   const wizard =
     !wizardDirty && extracted.wizard ? extracted.wizard : localWizard;
 
@@ -259,6 +270,33 @@ export function Chat() {
     );
   };
 
+  const loadDemoAthlete = () => {
+    setLocalError(null);
+    startTransition(async () => {
+      try {
+        const result = await loadDemoAthleteAction(sessionId);
+        setHistory(result.history);
+        setLocalWizard(result.wizard);
+        setWizardDirty(true);
+        if (demoPlan) {
+          setDemoPlan(
+            attachCoachNote({
+              ...demoPlan,
+              historyContext: result.history,
+              wizard: result.wizard,
+            }),
+          );
+        }
+      } catch (err) {
+        setLocalError(
+          err instanceof Error
+            ? err.message
+            : "Could not load demo athlete history.",
+        );
+      }
+    });
+  };
+
   const runQuickDemo = () => {
     const prompt =
       "I have 90 minutes tomorrow morning near Amsterdam — endurance ride, some hills if possible, avoid busy roads.";
@@ -328,8 +366,36 @@ export function Chat() {
                 >
                   Try the demo prompt
                 </button>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={loadDemoAthlete}
+                  disabled={busy || Boolean(history)}
+                >
+                  {history ? "Demo athlete loaded" : "Load demo athlete history"}
+                </button>
               </div>
             </div>
+          )}
+
+          {history && (
+            <p className="history-chip" title={history.summaryLine}>
+              Athlete · {history.hoursLast7d}h / TSS {history.tssLast7d} last 7d
+              {history.lastHardLabel
+                ? ` · hard ${history.lastHardDaysAgo}d ago`
+                : ""}
+            </p>
+          )}
+
+          {!history && (showWizard || demoPlan) && (
+            <button
+              type="button"
+              className="ghost history-load"
+              onClick={loadDemoAthlete}
+              disabled={busy}
+            >
+              Load demo athlete history
+            </button>
           )}
 
           {busy && (
@@ -435,7 +501,7 @@ export function Chat() {
             aria-busy={busy}
           >
             <PlanPanel
-              key={`${plan.sessionId}-${plan.routes.map((r) => r.routeId).join("-")}`}
+              key={`${plan.sessionId}-${plan.routes.map((r) => r.routeId).join("-")}-${plan.historyContext?.athleteId ?? "none"}`}
               plan={plan}
               onSelectRoute={onSelectRoute}
               onRefine={onRefine}

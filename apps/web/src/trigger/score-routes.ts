@@ -2,12 +2,14 @@ import { schemaTask, logger } from "@trigger.dev/sdk";
 import { z } from "zod";
 import {
   findSimilarRides,
+  getHistoryContext,
   persistRoutes,
   scoreRoutesSql,
   upsertSession,
 } from "@/lib/clickhouse";
 import { attachCoachNote } from "@/lib/coach-note";
 import { scoreRoute } from "@/lib/scoring";
+import { getSessionAthlete } from "@/lib/session-store";
 import { buildTips, comparisonFromRoutes } from "@/lib/tips";
 import { estimateTraining } from "@/lib/training";
 import { resolveWeather } from "@/lib/weather";
@@ -57,6 +59,10 @@ export const scoreAndEnrichRoutesTask = schemaTask({
     } as WizardState;
     await upsertSession(w, w.goalsText);
     const weather = await resolveWeather(w.startLat, w.startLng);
+    const athleteId = getSessionAthlete(w.sessionId);
+    const historyContext = athleteId
+      ? ((await getHistoryContext(athleteId)) ?? undefined)
+      : undefined;
 
     const routes: RouteCandidate[] = [];
     for (const raw of rawRoutes) {
@@ -118,6 +124,7 @@ export const scoreAndEnrichRoutesTask = schemaTask({
         wizard: w,
         routes,
         selectedRouteId: routes[0]?.routeId ?? "",
+        historyContext,
         comparison: comparisonFromRoutes(routes),
       }),
       sqlRanking: ranked,

@@ -2,17 +2,55 @@ import { chat } from "@trigger.dev/sdk/ai";
 import { google } from "@ai-sdk/google";
 import { streamText, stepCountIs, tool } from "ai";
 import { z } from "zod";
-import { upsertSession } from "@/lib/clickhouse";
+import { DEMO_ATHLETE_ID, suggestIntensityFromHistory } from "@/lib/athlete-history";
+import { ensureDemoAthleteSeeded, upsertSession } from "@/lib/clickhouse";
 import { attachCoachNote } from "@/lib/coach-note";
 import { AGENT_SYSTEM_PROMPT } from "@/lib/constants";
 import { mergeWizard } from "@/lib/plan-builder";
-import { getPlan, getWizard, setPlan, setWizard } from "@/lib/session-store";
+import {
+  getPlan,
+  getWizard,
+  setPlan,
+  setSessionAthlete,
+  setWizard,
+} from "@/lib/session-store";
 import type { Intensity, PlanPayload, StartPreset, TerrainBias } from "@/lib/types";
 import { generateRouteCandidatesTask } from "./generate-routes";
 import { scoreAndEnrichRoutesTask } from "./score-routes";
 
 function createTools(sessionId: string) {
   return {
+    load_demo_athlete: tool({
+      description:
+        "Load the fixture demo athlete (≈3 weeks of Amsterdam rides) into ClickHouse history for coaching. Prefer this over inventing training history. Never claim a live Strava/Garmin OAuth import.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const history = await ensureDemoAthleteSeeded();
+        setSessionAthlete(sessionId, DEMO_ATHLETE_ID);
+        const current = getWizard(sessionId);
+        const suggested = suggestIntensityFromHistory(
+          history,
+          current.intensity,
+        );
+        const wizard = suggested
+          ? mergeWizard(current, { intensity: suggested })
+          : current;
+        if (suggested) setWizard(wizard);
+        const plan = getPlan(sessionId);
+        if (plan) {
+          setPlan(
+            attachCoachNote({ ...plan, historyContext: history, wizard }),
+          );
+        }
+        return {
+          ui: "wizard" as const,
+          wizard,
+          history,
+          message: `Demo athlete loaded (${history.rideCount} rides). ${history.loadHint}.`,
+        };
+      },
+    }),
+
     upsert_wizard_state: tool({
       description:
         "Create or update the interactive planning wizard from the rider's goals. Call this first.",

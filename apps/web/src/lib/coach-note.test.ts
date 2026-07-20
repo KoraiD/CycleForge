@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { summarizeDemoAthlete } from "./athlete-history";
 import { attachCoachNote, buildCoachNote } from "./coach-note";
 import { makeWizard } from "./test-fixtures";
 import type { RouteCandidate } from "./types";
@@ -64,6 +65,17 @@ describe("coach-note", () => {
     expect(note).toContain("Waterland Sunday");
     expect(note.split("\n\n").length).toBeGreaterThanOrEqual(2);
     expect(note.length).toBeLessThan(900);
+  });
+
+  it("includes athlete history aggregates when provided", () => {
+    const history = summarizeDemoAthlete(new Date("2026-07-20T12:00:00Z"));
+    const note = buildCoachNote({
+      wizard: makeWizard({ intensity: "endurance" }),
+      route: makeRoute(),
+      history,
+    });
+    expect(note).toContain("History:");
+    expect(note).toMatch(/TSS \d+/);
   });
 
   it("attaches coachNote for the selected route", () => {

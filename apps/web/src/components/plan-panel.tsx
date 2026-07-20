@@ -60,8 +60,18 @@ export function PlanPanel({
     if (selected.routeId === plan.selectedRouteId && plan.coachNote) {
       return plan.coachNote;
     }
-    return buildCoachNote({ wizard: plan.wizard, route: selected });
-  }, [plan.coachNote, plan.selectedRouteId, plan.wizard, selected]);
+    return buildCoachNote({
+      wizard: plan.wizard,
+      route: selected,
+      history: plan.historyContext,
+    });
+  }, [
+    plan.coachNote,
+    plan.historyContext,
+    plan.selectedRouteId,
+    plan.wizard,
+    selected,
+  ]);
 
   if (!selected) return null;
 
@@ -125,6 +135,20 @@ export function PlanPanel({
           </div>
         </div>
       </header>
+
+      {plan.historyContext ? (
+        <p className="history-banner" title={plan.historyContext.summaryLine}>
+          <span className="eyebrow">Athlete history</span>
+          {plan.historyContext.athleteLabel}: {plan.historyContext.rideCount}{" "}
+          rides · {plan.historyContext.hoursLast7d}h / TSS{" "}
+          {plan.historyContext.tssLast7d} last 7d
+          {plan.historyContext.lastHardLabel
+            ? ` · last hard “${plan.historyContext.lastHardLabel}” ${plan.historyContext.lastHardDaysAgo}d ago`
+            : ""}
+          {" · "}
+          {plan.historyContext.loadHint}
+        </p>
+      ) : null}
 
       {coachNote ? (
         <article className="coach-note" aria-label="Coaching suggestion">

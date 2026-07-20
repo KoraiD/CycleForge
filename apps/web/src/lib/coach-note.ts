@@ -1,11 +1,12 @@
-import type { RouteCandidate, WizardState } from "./types";
+import type { HistoryContext, RouteCandidate, WizardState } from "./types";
 
 /** Short coaching prose for the plan panel — not a chat wall of text. */
 export function buildCoachNote(input: {
   wizard: WizardState;
   route: RouteCandidate;
+  history?: HistoryContext | null;
 }): string {
-  const { wizard, route } = input;
+  const { wizard, route, history } = input;
   const km = route.distanceM / 1000;
   const climb = Math.round(route.elevGainM);
   const tss = route.training.tssEst;
@@ -60,6 +61,16 @@ export function buildCoachNote(input: {
     }
   }
 
+  if (history?.loadHint.includes("recovery")) {
+    howTo.push(
+      "Recent athlete load is high — keep this session controlled and skip optional surges.",
+    );
+  } else if (history?.loadHint.includes("quality")) {
+    howTo.push(
+      "Last week was lighter — this is a good day to complete the planned stimulus.",
+    );
+  }
+
   if (wizard.terrainBias === "hilly" || climb > 150) {
     howTo.push("Expect short Dutch rollers — stay seated and keep power even.");
   } else if (wizard.terrainBias === "flat" || climb < 50) {
@@ -76,9 +87,17 @@ export function buildCoachNote(input: {
     route.training.recoveryHint,
   ];
 
-  if (route.similarRideLabels.length > 0) {
+  if (history) {
     close.push(
-      `Closest history: ${route.similarRideLabels.slice(0, 2).join(", ")}.`,
+      `History: ${history.hoursLast7d}h / TSS ${history.tssLast7d} last 7d` +
+        (history.lastHardLabel
+          ? ` · last hard “${history.lastHardLabel}” ${history.lastHardDaysAgo}d ago`
+          : "") +
+        ".",
+    );
+  } else if (route.similarRideLabels.length > 0) {
+    close.push(
+      `Closest corpus rides: ${route.similarRideLabels.slice(0, 2).join(", ")}.`,
     );
   }
 
@@ -87,18 +106,25 @@ export function buildCoachNote(input: {
     .join("\n\n");
 }
 
-export function attachCoachNote<T extends {
-  wizard: WizardState;
-  routes: RouteCandidate[];
-  selectedRouteId: string;
-}>(plan: T): T & { coachNote: string } {
+export function attachCoachNote<
+  T extends {
+    wizard: WizardState;
+    routes: RouteCandidate[];
+    selectedRouteId: string;
+    historyContext?: HistoryContext;
+  },
+>(plan: T): T & { coachNote: string } {
   const route =
     plan.routes.find((r) => r.routeId === plan.selectedRouteId) ??
     plan.routes[0];
   return {
     ...plan,
     coachNote: route
-      ? buildCoachNote({ wizard: plan.wizard, route })
+      ? buildCoachNote({
+          wizard: plan.wizard,
+          route,
+          history: plan.historyContext,
+        })
       : "Confirm a route to get a short coaching note.",
   };
 }

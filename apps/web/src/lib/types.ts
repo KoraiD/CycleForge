@@ -75,6 +75,24 @@ export type RouteCandidate = {
   source: "ors" | "fallback" | "seed";
 };
 
+/** Aggregates from rider_history_rides / demo fixture for coaching. */
+export type HistoryContext = {
+  athleteId: string;
+  athleteLabel: string;
+  source: "fixture" | "upload";
+  rideCount: number;
+  weeks: number;
+  hoursLast7d: number;
+  hoursLast28d: number;
+  tssLast7d: number;
+  tssLast28d: number;
+  lastHardLabel: string | null;
+  lastHardDaysAgo: number | null;
+  recentLabels: string[];
+  summaryLine: string;
+  loadHint: string;
+};
+
 export type PlanPayload = {
   sessionId: string;
   wizard: WizardState;
@@ -82,6 +100,8 @@ export type PlanPayload = {
   selectedRouteId: string;
   /** Short coaching suggestion for the selected route (lives on the plan, not in chat). */
   coachNote: string;
+  /** Present when a demo/imported athlete is bound to the session. */
+  historyContext?: HistoryContext;
   comparison: {
     minClimbM: number;
     maxClimbM: number;
