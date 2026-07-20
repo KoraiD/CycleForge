@@ -29,6 +29,7 @@ const wizardSchema = z.object({
   startLabel: z.string().optional(),
   avoidBusyRoads: z.boolean(),
   confirmed: z.boolean(),
+  ftpWatts: z.number().min(80).max(500).nullable().optional(),
 });
 
 const rawRouteSchema = z.object({
@@ -57,6 +58,7 @@ export const scoreAndEnrichRoutesTask = schemaTask({
     const w = {
       ...wizard,
       startLabel: wizard.startLabel ?? "",
+      ftpWatts: wizard.ftpWatts ?? null,
     } as WizardState;
     await upsertSession(w, w.goalsText);
     const weather = await resolveWeather(w.startLat, w.startLng);

@@ -47,6 +47,8 @@ function getClient(): ClickHouseClient | null {
       username,
       password,
       database,
+      // Prevent hung CH sockets from stalling local plan builds forever.
+      request_timeout: 8_000,
     });
     clientKey = key;
   }

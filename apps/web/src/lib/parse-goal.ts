@@ -1,3 +1,4 @@
+import { START_PRESETS } from "./constants";
 import type { Intensity, TerrainBias, WizardState } from "./types";
 
 /** Extract wizard fields from free-text training goals. */
@@ -46,6 +47,32 @@ export function parseGoalPrompt(text: string): Partial<WizardState> {
     patch.avoidBusyRoads = true;
   } else if (/\b(busy\s+roads?\s+ok|main\s+roads?\s+ok)\b/i.test(lower)) {
     patch.avoidBusyRoads = false;
+  }
+
+  if (/\b(centraal|central\s+station|amsterdam\s+central)\b/i.test(lower)) {
+    const p = START_PRESETS.centraal;
+    patch.startPreset = "centraal";
+    patch.startLat = p.lat;
+    patch.startLng = p.lng;
+    patch.startLabel = p.label;
+  } else if (/\b(vondelpark|vondel\s*park)\b/i.test(lower)) {
+    const p = START_PRESETS.vondelpark;
+    patch.startPreset = "vondelpark";
+    patch.startLat = p.lat;
+    patch.startLng = p.lng;
+    patch.startLabel = p.label;
+  } else if (/\bamstel(\s+station)?\b/i.test(lower) && !/\bamsterdam\b/i.test(lower)) {
+    const p = START_PRESETS.amstel;
+    patch.startPreset = "amstel";
+    patch.startLat = p.lat;
+    patch.startLng = p.lng;
+    patch.startLabel = p.label;
+  } else if (/\bamstel\s+station\b/i.test(lower)) {
+    const p = START_PRESETS.amstel;
+    patch.startPreset = "amstel";
+    patch.startLat = p.lat;
+    patch.startLng = p.lng;
+    patch.startLabel = p.label;
   }
 
   return patch;

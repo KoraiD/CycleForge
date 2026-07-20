@@ -22,4 +22,15 @@ describe("parseGoalPrompt", () => {
     expect(parseGoalPrompt("10 min spin").durationMin).toBe(30);
     expect(parseGoalPrompt("400 minutes epic").durationMin).toBe(300);
   });
+
+  it("maps Amsterdam start landmarks", () => {
+    const p = parseGoalPrompt(
+      "Plan a 55 minute tempo ride from Amsterdam Centraal, prefer flat roads.",
+    );
+    expect(p.durationMin).toBe(55);
+    expect(p.intensity).toBe("tempo");
+    expect(p.terrainBias).toBe("flat");
+    expect(p.startPreset).toBe("centraal");
+    expect(p.startLabel).toBe("Amsterdam Centraal");
+  });
 });
