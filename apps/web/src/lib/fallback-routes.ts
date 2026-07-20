@@ -1,14 +1,15 @@
+import amstelGolden from "@/data/golden-routes/amstel.json";
+import centraalGolden from "@/data/golden-routes/centraal.json";
+import vondelparkGolden from "@/data/golden-routes/vondelpark.json";
 import {
   buildElevProfile,
   elevGainLoss,
   lineDistanceM,
   syntheticLoop,
 } from "./geometry";
+import { placeAwareRouteLabels } from "./route-labels";
 import { targetDistanceM, targetElevGainM } from "./scoring";
 import type { StartPreset, WizardState } from "./types";
-import amstelGolden from "@/data/golden-routes/amstel.json";
-import centraalGolden from "@/data/golden-routes/centraal.json";
-import vondelparkGolden from "@/data/golden-routes/vondelpark.json";
 
 export type RawRoute = {
   label: string;
@@ -76,8 +77,8 @@ function scaleGeometryElev(
 }
 
 function buildGoldenRoutes(wizard: WizardState): RawRoute[] | null {
-  const file =
-    GOLDEN_BY_PRESET[wizard.startPreset] ?? GOLDEN_BY_PRESET.vondelpark;
+  // Only use cached Amsterdam geometry for explicit AMS presets — never for custom pins.
+  const file = GOLDEN_BY_PRESET[wizard.startPreset];
   if (!file?.routes?.length) return null;
 
   const speed =
@@ -114,23 +115,24 @@ function buildSyntheticRoutes(wizard: WizardState): RawRoute[] {
     Math.max(targetClimb * 0.11, 11),
   ];
 
+  const labels = placeAwareRouteLabels(wizard);
   const specs = [
     {
-      label: "Amstel canal loop",
+      label: labels[0],
       profile: "endurance-flat",
       radius: radii[0],
       climbAmp: climbAmps[0],
       busy: wizard.avoidBusyRoads ? 0.1 : 0.25,
     },
     {
-      label: "Vondelpark–Bosbaan",
+      label: labels[1],
       profile: "rolling-endurance",
       radius: radii[1],
       climbAmp: climbAmps[1],
       busy: 0.15,
     },
     {
-      label: "Waterland rollers",
+      label: labels[2],
       profile: "hilly-loop",
       radius: radii[2],
       climbAmp: climbAmps[2] * (wizard.terrainBias === "hilly" ? 1.4 : 1),
@@ -149,7 +151,15 @@ function buildSyntheticRoutes(wizard: WizardState): RawRoute[] {
   );
 }
 
-/** Cached ORS geometries when live ORS is unavailable; synthetic loops as last resort. */
+function isAmsterdamPreset(preset: StartPreset): boolean {
+  return preset === "centraal" || preset === "vondelpark" || preset === "amstel";
+}
+
+/** Cached ORS geometries for AMS presets; synthetic loops from the wizard start otherwise. */
 export function buildFallbackRoutes(wizard: WizardState): RawRoute[] {
-  return buildGoldenRoutes(wizard) ?? buildSyntheticRoutes(wizard);
+  if (isAmsterdamPreset(wizard.startPreset)) {
+    const golden = buildGoldenRoutes(wizard);
+    if (golden) return golden;
+  }
+  return buildSyntheticRoutes(wizard);
 }

@@ -6,7 +6,15 @@ import {
   useTriggerChatTransport,
   type InferChatUIMessage,
 } from "@trigger.dev/sdk/chat/react";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import {
   createTrainingBlockAction,
   generateDemoPlan,
@@ -148,6 +156,56 @@ export function Chat() {
   const seenPlanKeys = useRef(new Set<string>());
   const [morphFrom, setMorphFrom] = useState<GeoJSON.LineString | null>(null);
   const prevPlanRef = useRef<PlanPayload | null>(null);
+  const [paneWidth, setPaneWidth] = useState(() => {
+    if (typeof window === "undefined") return 400;
+    try {
+      const saved = window.localStorage.getItem("cycleforge-pane-width");
+      const n = Number(saved);
+      if (Number.isFinite(n) && n >= 280 && n <= 720) return n;
+    } catch {
+      /* ignore */
+    }
+    return 400;
+  });
+  const resizingRef = useRef(false);
+
+  const onResizePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      resizingRef.current = true;
+      const startX = event.clientX;
+      const startWidth = paneWidth;
+      const target = event.currentTarget;
+      target.setPointerCapture(event.pointerId);
+
+      const onMove = (ev: PointerEvent) => {
+        if (!resizingRef.current) return;
+        const next = Math.min(720, Math.max(280, startWidth + ev.clientX - startX));
+        setPaneWidth(next);
+      };
+      const onUp = (ev: PointerEvent) => {
+        resizingRef.current = false;
+        try {
+          target.releasePointerCapture(ev.pointerId);
+        } catch {
+          /* ignore */
+        }
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        setPaneWidth((w) => {
+          try {
+            window.localStorage.setItem("cycleforge-pane-width", String(w));
+          } catch {
+            /* ignore */
+          }
+          return w;
+        });
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [paneWidth],
+  );
 
   const adoptPlan = (next: PlanPayload) => {
     const prev = prevPlanRef.current;
@@ -518,7 +576,10 @@ export function Chat() {
   );
 
   return (
-    <div className="shell">
+    <div
+      className="shell"
+      style={{ ["--chat-pane-width" as string]: `${paneWidth}px` }}
+    >
       <aside className="chat-pane">
         <header className="chat-pane__header">
           <div className="chat-pane__brand-row">
@@ -731,6 +792,17 @@ export function Chat() {
           </p>
         )}
       </aside>
+
+      <div
+        className="pane-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize chat panel"
+        aria-valuenow={paneWidth}
+        aria-valuemin={280}
+        aria-valuemax={720}
+        onPointerDown={onResizePointerDown}
+      />
 
       <main className="visual-pane">
         {plan ? (

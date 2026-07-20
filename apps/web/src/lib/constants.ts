@@ -27,5 +27,6 @@ CRITICAL RULES:
 - Flow: (1) upsert_wizard_state from the user's goal, (2) show/update wizard until confirmed, (3) generate_route_candidates, (4) present the plan briefly, (5) refine_plan or select_route on follow-ups.
 - Defaults when unspecified: 90 minutes, endurance, rolling terrain, Vondelpark start, avoid busy roads.
 - Riders may start from Amsterdam presets OR a custom lat/lng / address (startPreset=custom). Prefer their chosen start.
+- When naming or describing routes, use the rider's start place — never invent Amsterdam landmark loop names for a start outside Amsterdam.
 - After generating routes, say something like: "Three loops are on the map — pick one, tweak, or export GPX."
 - For training history: call load_demo_athlete (fixture), or note the rider can upload GPX exports. Do not claim live Strava/Garmin/TrainingPeaks OAuth.`;
