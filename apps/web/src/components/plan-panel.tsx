@@ -11,9 +11,14 @@ import type {
   TerrainBias,
   WizardState,
 } from "@/lib/types";
+import type { TrainingBlockPlan } from "@/lib/training-block-plan";
 import { ElevationChart } from "./elevation-chart";
+import { HistoryChart } from "./history-chart";
+import { LeaveWindowCard } from "./leave-window";
 import { RouteMap } from "./route-map";
+import { ScoreChart } from "./score-chart";
 import { TrainingBlock } from "./training-block";
+import { TrainingBlockPanel } from "./training-block-panel";
 
 const INTENSITIES: Intensity[] = ["easy", "endurance", "tempo", "hills"];
 const TERRAINS: TerrainBias[] = ["flat", "rolling", "hilly"];
@@ -26,7 +31,10 @@ function formatDuration(seconds: number) {
 }
 
 export type PlanTweak = Partial<
-  Pick<WizardState, "durationMin" | "intensity" | "terrainBias" | "avoidBusyRoads">
+  Pick<
+    WizardState,
+    "durationMin" | "intensity" | "terrainBias" | "avoidBusyRoads" | "ftpWatts"
+  >
 > & { preset?: "shorter" | "hillier" | "easier" };
 
 export function PlanPanel({
@@ -35,12 +43,20 @@ export function PlanPanel({
   onRefine,
   onApplyTweaks,
   refining,
+  selectingRoute,
+  trainingBlock = null,
+  onCreateTrainingBlock,
+  blockBusy,
 }: {
   plan: PlanPayload;
   onSelectRoute?: (routeId: string) => void;
   onRefine?: (kind: "shorter" | "hillier" | "easier") => void;
   onApplyTweaks?: (tweak: PlanTweak) => void;
   refining?: boolean;
+  selectingRoute?: boolean;
+  trainingBlock?: TrainingBlockPlan | null;
+  onCreateTrainingBlock?: () => void;
+  blockBusy?: boolean;
 }) {
   // Drafts reset when Chat remounts this panel after regenerate (key change).
   const [selectedId, setSelectedId] = useState(plan.selectedRouteId);
@@ -105,8 +121,10 @@ export function PlanPanel({
     });
   };
 
+  const panelBusy = Boolean(refining || selectingRoute);
+
   return (
-    <section className="plan-panel animate-in" aria-busy={refining}>
+    <section className="plan-panel animate-in" aria-busy={panelBusy}>
       <header className="plan-panel__header">
         <div>
           <p className="eyebrow">Visual plan</p>
@@ -119,9 +137,9 @@ export function PlanPanel({
           <Link
             href={`/summary/${plan.sessionId}?route=${encodeURIComponent(selected.routeId)}`}
             className="ghost gpx-export"
-            aria-disabled={refining}
+            aria-disabled={panelBusy}
             onClick={(e) => {
-              if (refining) e.preventDefault();
+              if (panelBusy) e.preventDefault();
             }}
           >
             Open summary
@@ -129,7 +147,7 @@ export function PlanPanel({
           <button
             type="button"
             className="ghost gpx-export"
-            disabled={refining}
+            disabled={panelBusy}
             onClick={() => downloadRouteGpx(selected)}
           >
             Download GPX
@@ -163,7 +181,16 @@ export function PlanPanel({
         </article>
       ) : null}
 
-      {refining && (
+      {plan.leaveWindow ? <LeaveWindowCard leave={plan.leaveWindow} /> : null}
+
+      {selectingRoute && (
+        <div className="route-select-progress" role="status">
+          <span className="route-select-spinner" aria-hidden />
+          <p>Loading selected route — scoring details and map sync…</p>
+        </div>
+      )}
+
+      {refining && !selectingRoute && (
         <p className="status-banner" role="status">
           Updating routes with your tweaks…
         </p>
@@ -177,7 +204,7 @@ export function PlanPanel({
               <button
                 type="button"
                 className="chip"
-                disabled={refining}
+                disabled={panelBusy}
                 onClick={() => onRefine("shorter")}
               >
                 Shorter
@@ -185,7 +212,7 @@ export function PlanPanel({
               <button
                 type="button"
                 className="chip"
-                disabled={refining}
+                disabled={panelBusy}
                 onClick={() => onRefine("hillier")}
               >
                 Hillier
@@ -193,7 +220,7 @@ export function PlanPanel({
               <button
                 type="button"
                 className="chip"
-                disabled={refining}
+                disabled={panelBusy}
                 onClick={() => onRefine("easier")}
               >
                 Easier
@@ -210,7 +237,7 @@ export function PlanPanel({
             max={210}
             step={15}
             value={draftDuration}
-            disabled={refining}
+            disabled={panelBusy}
             onChange={(e) => setDraftDuration(Number(e.target.value))}
           />
           <strong>{draftDuration} min</strong>
@@ -222,7 +249,7 @@ export function PlanPanel({
             <button
               key={value}
               type="button"
-              disabled={refining}
+              disabled={panelBusy}
               className={draftIntensity === value ? "chip active" : "chip"}
               onClick={() => setDraftIntensity(value)}
             >
@@ -237,7 +264,7 @@ export function PlanPanel({
             <button
               key={value}
               type="button"
-              disabled={refining}
+              disabled={panelBusy}
               className={draftTerrain === value ? "chip active" : "chip"}
               onClick={() => setDraftTerrain(value)}
             >
@@ -250,7 +277,7 @@ export function PlanPanel({
           <input
             type="checkbox"
             checked={draftQuiet}
-            disabled={refining}
+            disabled={panelBusy}
             onChange={(e) => setDraftQuiet(e.target.checked)}
           />
           Prefer quieter roads
@@ -259,7 +286,7 @@ export function PlanPanel({
         <button
           type="button"
           className="primary tweak-apply"
-          disabled={refining || !tweaksDirty || !onApplyTweaks}
+          disabled={panelBusy || !tweaksDirty || !onApplyTweaks}
           onClick={applyTweaks}
         >
           {refining ? "Regenerating…" : "Apply & regenerate"}
@@ -292,19 +319,19 @@ export function PlanPanel({
                     ? "route-card preview"
                     : "route-card"
               }
-              disabled={refining}
-              onClick={() => handleSelect(route.routeId)}
-              onMouseEnter={() =>
-                setPreviewRouteId(
-                  route.routeId === selected.routeId ? null : route.routeId,
-                )
-              }
-              onMouseLeave={() => setPreviewRouteId(null)}
-              style={{
-                ["--route-accent" as string]:
-                  ROUTE_COLORS[index % ROUTE_COLORS.length],
-              }}
-            >
+                  disabled={panelBusy}
+                  onClick={() => handleSelect(route.routeId)}
+                  onMouseEnter={() =>
+                    setPreviewRouteId(
+                      route.routeId === selected.routeId ? null : route.routeId,
+                    )
+                  }
+                  onMouseLeave={() => setPreviewRouteId(null)}
+                  style={{
+                    ["--route-accent" as string]:
+                      ROUTE_COLORS[index % ROUTE_COLORS.length],
+                  }}
+                >
               <span className="route-card__title">{route.label}</span>
               <span className="route-card__meta">
                 {(route.distanceM / 1000).toFixed(1)} km ·{" "}
@@ -345,6 +372,7 @@ export function PlanPanel({
             accent={accent}
             hoverKm={hoverKm}
             onHoverKm={setHoverKm}
+            effortSegments={selected.effortSegments}
           />
         </div>
         <div>
@@ -353,9 +381,31 @@ export function PlanPanel({
         </div>
       </div>
 
+      {onCreateTrainingBlock ? (
+        <TrainingBlockPanel
+          block={trainingBlock}
+          onCreate={onCreateTrainingBlock}
+          busy={blockBusy}
+        />
+      ) : null}
+
+      <div className="plan-grid">
+        <div>
+          <h3>Score breakdown</h3>
+          <ScoreChart score={selected.score} />
+        </div>
+        {plan.historyContext ? (
+          <div>
+            <h3>Athlete load</h3>
+            <HistoryChart history={plan.historyContext} />
+          </div>
+        ) : null}
+      </div>
+
       <div className="plan-meta">
-        {selected.weather && (
-          <p className="weather">
+        {selected.weather ? (
+          <p className="weather weather--prominent">
+            <span className="eyebrow">Weather on route</span>
             {selected.weather.summary} · {Math.round(selected.weather.tempC)}°C ·
             wind {Math.round(selected.weather.windKmh)} km/h
             {selected.weather.source === "clickhouse"
@@ -363,6 +413,10 @@ export function PlanPanel({
               : selected.weather.source === "open-meteo"
                 ? " · live Open-Meteo"
                 : ""}
+          </p>
+        ) : (
+          <p className="weather weather--missing">
+            No weather snapshot on this route yet.
           </p>
         )}
         <p className="comparison">

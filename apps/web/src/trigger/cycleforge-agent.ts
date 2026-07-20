@@ -22,7 +22,7 @@ function createTools(sessionId: string) {
   return {
     load_demo_athlete: tool({
       description:
-        "Load the fixture demo athlete (≈3 weeks of Amsterdam rides) into ClickHouse history for coaching. Prefer this over inventing training history. Never claim a live Strava/Garmin OAuth import.",
+        "Load the fixture demo athlete (≈3 weeks of Amsterdam rides) into ClickHouse history for coaching. Prefer this over inventing training history. Riders can also upload GPX exports in the UI; never claim a live Strava/Garmin/TrainingPeaks OAuth import.",
       inputSchema: z.object({}),
       execute: async () => {
         const history = await ensureDemoAthleteSeeded();

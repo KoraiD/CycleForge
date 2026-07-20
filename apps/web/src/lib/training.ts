@@ -1,4 +1,11 @@
-import type { Intensity, TerrainBias, TrainingEffect, ZoneMix } from "./types";
+import type {
+  EffortSegment,
+  ElevPoint,
+  Intensity,
+  TerrainBias,
+  TrainingEffect,
+  ZoneMix,
+} from "./types";
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -15,28 +22,42 @@ function normalizeZones(z: ZoneMix): ZoneMix {
   };
 }
 
+/** Classic Coggan IF targets by session intent (fraction of FTP). */
+const INTENSITY_IF: Record<Intensity, number> = {
+  easy: 0.55,
+  endurance: 0.68,
+  tempo: 0.82,
+  hills: 0.78,
+};
+
 export function estimateTraining(input: {
   distanceM: number;
   durationS: number;
   elevGainM: number;
   intensity: Intensity;
   terrainBias: TerrainBias;
+  ftpWatts?: number | null;
 }): TrainingEffect {
   const hours = Math.max(input.durationS / 3600, 0.25);
   const distanceKm = input.distanceM / 1000;
   const climbPerKm = input.elevGainM / Math.max(distanceKm, 1);
 
-  const intensityFactor: Record<Intensity, number> = {
-    easy: 0.55,
-    endurance: 0.68,
-    tempo: 0.8,
-    hills: 0.78,
-  };
-
   const terrainBump =
     input.terrainBias === "hilly" ? 0.06 : input.terrainBias === "rolling" ? 0.03 : 0;
   const climbBump = clamp(climbPerKm / 40, 0, 0.12);
-  const ifEst = clamp(intensityFactor[input.intensity] + terrainBump + climbBump, 0.45, 0.95);
+  let ifEst = clamp(
+    INTENSITY_IF[input.intensity] + terrainBump + climbBump,
+    0.45,
+    0.95,
+  );
+
+  let npEst: number | null = null;
+  const ftp = input.ftpWatts;
+  if (ftp && ftp > 80) {
+    npEst = Math.round(ftp * ifEst);
+    ifEst = clamp(npEst / ftp, 0.45, 0.95);
+  }
+
   const tssEst = Math.round(hours * ifEst * ifEst * 100);
 
   let zoneMix: ZoneMix;
@@ -88,5 +109,50 @@ export function estimateTraining(input: {
     stimulus,
     zoneMix: normalizeZones(zoneMix),
     recoveryHint,
+    ftpWatts: ftp && ftp > 80 ? ftp : null,
+    npEst,
   };
+}
+
+/** Derive climb-effort overlays along the elevation profile. */
+export function buildEffortSegments(profile: ElevPoint[]): EffortSegment[] {
+  if (profile.length < 2) return [];
+  const segments: EffortSegment[] = [];
+  let fromKm = profile[0].km;
+  let zone: EffortSegment["zone"] = 2;
+  let label = "Steady";
+
+  for (let i = 1; i < profile.length; i++) {
+    const a = profile[i - 1];
+    const b = profile[i];
+    const dKm = Math.max(b.km - a.km, 0.001);
+    const grade = ((b.elevM - a.elevM) / (dKm * 1000)) * 100;
+    let nextZone: EffortSegment["zone"] = 2;
+    let nextLabel = "Steady";
+    if (grade >= 4.5) {
+      nextZone = 5;
+      nextLabel = "Hard climb";
+    } else if (grade >= 2.5) {
+      nextZone = 4;
+      nextLabel = "Climb";
+    } else if (grade >= 1) {
+      nextZone = 3;
+      nextLabel = "Rollers";
+    } else if (grade <= -2) {
+      nextZone = 1;
+      nextLabel = "Descent";
+    }
+
+    if (nextZone !== zone || i === profile.length - 1) {
+      const toKm = nextZone !== zone ? a.km : b.km;
+      if (toKm - fromKm >= 0.3) {
+        segments.push({ fromKm, toKm, zone, label });
+      }
+      fromKm = a.km;
+      zone = nextZone;
+      label = nextLabel;
+    }
+  }
+
+  return segments.slice(0, 12);
 }

@@ -1,12 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useChat } from "@ai-sdk/react";
 import {
   useTriggerChatTransport,
   type InferChatUIMessage,
 } from "@trigger.dev/sdk/chat/react";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
+  createTrainingBlockAction,
   generateDemoPlan,
   getPlanAction,
   getSessionHistoryAction,
@@ -15,7 +17,9 @@ import {
   selectRouteAction,
   startChatSession,
   updateWizardAction,
+  uploadGpxHistoryAction,
 } from "@/app/actions";
+import type { TrainingBlockPlan } from "@/lib/training-block-plan";
 import type { cycleforgeAgent } from "@/trigger/cycleforge-agent";
 import { getOrCreateBrowserSessionId } from "@/lib/browser-session";
 import { attachCoachNote } from "@/lib/coach-note";
@@ -126,6 +130,13 @@ export function Chat() {
   const [hydrated, setHydrated] = useState(false);
   const [agentConfigured, setAgentConfigured] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [selectingRoute, setSelectingRoute] = useState(false);
+  const [uploadingGpx, setUploadingGpx] = useState(false);
+  const [trainingBlock, setTrainingBlock] = useState<TrainingBlockPlan | null>(
+    null,
+  );
+  const [blockBusy, setBlockBusy] = useState(false);
+  const gpxInputRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -258,14 +269,25 @@ export function Chat() {
   };
 
   const onSelectRoute = (routeId: string) => {
-    if (demoPlan) {
-      setDemoPlan(attachCoachNote({ ...demoPlan, selectedRouteId: routeId }));
+    const base = demoPlan ?? extracted.plan;
+    if (base) {
+      setDemoPlan(attachCoachNote({ ...base, selectedRouteId: routeId }));
     }
+    setSelectingRoute(true);
+    const clearTimer = window.setTimeout(() => setSelectingRoute(false), 900);
     startTransition(async () => {
-      await selectRouteAction(sessionId, routeId);
+      try {
+        await selectRouteAction(sessionId, routeId);
+      } finally {
+        window.clearTimeout(clearTimer);
+        setSelectingRoute(false);
+      }
     });
+    // Sync agent in the background — don't block the map on first switch.
     if (agentEnabled) {
-      void sendMessage({ text: `Select route ${routeId}` });
+      void sendMessage({ text: `Select route ${routeId}` }).catch(() => {
+        setAgentConfigured(false);
+      });
     }
   };
 
@@ -317,8 +339,27 @@ export function Chat() {
     const { preset: _preset, ...patch } = tweak;
     regenerateWithPatch(
       patch,
-      `Regenerate with durationMin=${patch.durationMin ?? wizard.durationMin}, intensity=${patch.intensity ?? wizard.intensity}, terrainBias=${patch.terrainBias ?? wizard.terrainBias}, avoidBusyRoads=${patch.avoidBusyRoads ?? wizard.avoidBusyRoads}.`,
+      `Regenerate with durationMin=${patch.durationMin ?? wizard.durationMin}, intensity=${patch.intensity ?? wizard.intensity}, terrainBias=${patch.terrainBias ?? wizard.terrainBias}, avoidBusyRoads=${patch.avoidBusyRoads ?? wizard.avoidBusyRoads}, ftpWatts=${patch.ftpWatts ?? wizard.ftpWatts}.`,
     );
+  };
+
+  const onCreateTrainingBlock = () => {
+    setLocalError(null);
+    setBlockBusy(true);
+    startTransition(async () => {
+      try {
+        const block = await createTrainingBlockAction(sessionId);
+        setTrainingBlock(block);
+      } catch (err) {
+        setLocalError(
+          err instanceof Error
+            ? err.message
+            : "Could not save training block to ClickHouse.",
+        );
+      } finally {
+        setBlockBusy(false);
+      }
+    });
   };
 
   const loadDemoAthlete = () => {
@@ -348,6 +389,41 @@ export function Chat() {
     });
   };
 
+  const onGpxSelected = (file: File | null) => {
+    if (!file) return;
+    setLocalError(null);
+    setUploadingGpx(true);
+    startTransition(async () => {
+      try {
+        const xml = await file.text();
+        const result = await uploadGpxHistoryAction(
+          sessionId,
+          xml,
+          file.name,
+        );
+        setHistory(result.history);
+        if (demoPlan ?? extracted.plan) {
+          const base = demoPlan ?? extracted.plan!;
+          setDemoPlan(
+            attachCoachNote({
+              ...base,
+              historyContext: result.history,
+            }),
+          );
+        }
+      } catch (err) {
+        setLocalError(
+          err instanceof Error
+            ? err.message
+            : "Could not import that GPX file.",
+        );
+      } finally {
+        setUploadingGpx(false);
+        if (gpxInputRef.current) gpxInputRef.current.value = "";
+      }
+    });
+  };
+
   const runQuickDemo = () => {
     const prompt =
       "I have 90 minutes tomorrow morning near Amsterdam — endurance ride, some hills if possible, avoid busy roads.";
@@ -371,7 +447,10 @@ export function Chat() {
           durationMin: 90,
           intensity: "endurance",
           terrainBias: "rolling",
-          startPreset: "vondelpark",
+          startPreset: "custom",
+          startLat: 52.3577,
+          startLng: 4.8686,
+          startLabel: "Vondelpark",
           avoidBusyRoads: true,
           confirmed: true,
         });
@@ -401,7 +480,12 @@ export function Chat() {
     <div className="shell">
       <aside className="chat-pane">
         <header className="chat-pane__header">
-          <BrandMark withWordmark size={32} />
+          <div className="chat-pane__brand-row">
+            <BrandMark withWordmark size={32} />
+            <Link href="/stack" className="ghost chat-stack-link">
+              Stack
+            </Link>
+          </div>
           <p className="tagline">Visual training plans — not walls of text</p>
         </header>
 
@@ -429,34 +513,73 @@ export function Chat() {
                 >
                   {history ? "Demo athlete loaded" : "Load demo athlete history"}
                 </button>
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={busy || uploadingGpx}
+                  onClick={() => gpxInputRef.current?.click()}
+                >
+                  {uploadingGpx ? "Importing GPX…" : "Upload GPX history"}
+                </button>
               </div>
+              <p className="upload-note">
+                Strava / Garmin / TrainingPeaks OAuth is out of scope — export
+                GPX from those apps and upload it for ClickHouse coaching history.
+              </p>
             </div>
           )}
 
           {history && (
             <p className="history-chip" title={history.summaryLine}>
-              Athlete · {history.hoursLast7d}h / TSS {history.tssLast7d} last 7d
+              {history.source === "upload" ? "Your data" : "Athlete"} ·{" "}
+              {history.hoursLast7d}h / TSS {history.tssLast7d} last 7d
               {history.lastHardLabel
                 ? ` · hard ${history.lastHardDaysAgo}d ago`
                 : ""}
             </p>
           )}
 
-          {!history && (showWizard || demoPlan) && (
-            <button
-              type="button"
-              className="ghost history-load"
-              onClick={loadDemoAthlete}
-              disabled={busy}
-            >
-              Load demo athlete history
-            </button>
-          )}
+          {(showWizard || demoPlan || history) &&
+          !(hydrated && messages.length === 0 && !demoPlan) ? (
+            <div className="history-actions">
+              {!history ? (
+                <button
+                  type="button"
+                  className="ghost history-load"
+                  onClick={loadDemoAthlete}
+                  disabled={busy}
+                >
+                  Load demo athlete history
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="ghost history-load"
+                disabled={busy || uploadingGpx}
+                onClick={() => gpxInputRef.current?.click()}
+              >
+                {uploadingGpx
+                  ? "Importing GPX…"
+                  : "Upload GPX (Strava/Garmin/TP)"}
+              </button>
+            </div>
+          ) : null}
+          <input
+            ref={gpxInputRef}
+            type="file"
+            accept=".gpx,application/gpx+xml,text/xml"
+            className="sr-only"
+            onChange={(e) => onGpxSelected(e.target.files?.[0] ?? null)}
+          />
 
-          {busy && (
+          {(busy || selectingRoute) && (
             <div className="status-banner" role="status">
-              <p>Working — routes and scores update when ready.</p>
-              {progressChips.length > 0 ? (
+              <p>
+                {selectingRoute
+                  ? "Switching route — updating map and coach note…"
+                  : "Working — routes and scores update when ready."}
+              </p>
+              {!selectingRoute && progressChips.length > 0 ? (
                 <ul className="tool-progress" aria-label="Agent progress">
                   {progressChips.map((label, i) => (
                     <li
@@ -467,6 +590,11 @@ export function Chat() {
                     </li>
                   ))}
                 </ul>
+              ) : null}
+              {selectingRoute ? (
+                <div className="route-select-progress route-select-progress--inline">
+                  <span className="route-select-spinner" aria-hidden />
+                </div>
               ) : null}
             </div>
           )}
@@ -492,6 +620,7 @@ export function Chat() {
               onConfirm={onConfirmWizard}
               busy={busy}
               collapsed={Boolean(plan)}
+              hasPlan={Boolean(plan)}
             />
           )}
 
@@ -568,7 +697,11 @@ export function Chat() {
               onSelectRoute={onSelectRoute}
               onRefine={onRefine}
               onApplyTweaks={onApplyTweaks}
-              refining={busy}
+              refining={busy && !selectingRoute}
+              selectingRoute={selectingRoute}
+              trainingBlock={trainingBlock}
+              onCreateTrainingBlock={onCreateTrainingBlock}
+              blockBusy={blockBusy}
             />
           </div>
         ) : busy ? (
@@ -576,6 +709,9 @@ export function Chat() {
             <BrandMark withWordmark size={36} />
             <h1>Generating routes…</h1>
             <p>Durable Trigger tasks are fanning out ORS and scoring.</p>
+            <div className="gen-progress" aria-hidden>
+              <span className="route-select-spinner" />
+            </div>
             <ol className="gen-steps">
               {steps.map((step, i) => (
                 <li key={step} className={i === steps.length - 1 ? "active" : ""}>
