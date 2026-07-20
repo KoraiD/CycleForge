@@ -37,6 +37,7 @@ import {
 } from "@/lib/browser-session";
 import { attachCoachNote } from "@/lib/coach-note";
 import { START_PRESETS } from "@/lib/constants";
+import { withTimeoutOrThrow } from "@/lib/fetch-timeout";
 import { friendlyErrorMessage } from "@/lib/friendly-error";
 import { parseGoalPrompt } from "@/lib/parse-goal";
 import {
@@ -47,7 +48,6 @@ import {
 } from "@/lib/types";
 import { BrandMark } from "./brand-mark";
 import { PlanPanel, type PlanTweak } from "./plan-panel";
-import { TriggerFanout } from "./trigger-fanout";
 import { Wizard } from "./wizard";
 
 type Msg = InferChatUIMessage<typeof cycleforgeAgent>;
@@ -58,6 +58,11 @@ const LOCAL_GEN_STEPS = [
   "Weather + scoring…",
   "Building the visual plan…",
 ];
+
+/** Hard ceiling so a hung server action cannot leave the UI spinning forever. */
+const PLAN_BUILD_CLIENT_MS = 60_000;
+/** Don't let a stuck agent stream block the Trigger ORS fallback forever. */
+const AGENT_STREAM_CLIENT_MS = 55_000;
 
 function planRouteKey(plan: PlanPayload): string {
   return plan.routes.map((r) => r.routeId).join("|");
@@ -129,22 +134,6 @@ function toolProgressChips(activities: ToolActivity[]): string[] {
   return chips;
 }
 
-function generatingSteps(activities: ToolActivity[]): string[] {
-  const names = new Set(activities.map((a) => a.name));
-  const steps = ["Reading goals"];
-  if (names.has("upsert_wizard_state")) steps.push("Updating wizard");
-  if (names.has("load_demo_athlete")) steps.push("Loading athlete history");
-  if (
-    names.has("generate_route_candidates") ||
-    names.has("refine_plan")
-  ) {
-    steps.push("Fetching routes (ORS fan-out)");
-    steps.push("Scoring in ClickHouse");
-  }
-  if (names.has("select_route")) steps.push("Selecting route");
-  return steps;
-}
-
 export function Chat() {
   const [sessionId] = useState(() => getOrCreateBrowserSessionId());
   const [input, setInput] = useState("");
@@ -164,9 +153,13 @@ export function Chat() {
   );
   const [blockBusy, setBlockBusy] = useState(false);
   const [localStep, setLocalStep] = useState(0);
+  const [buildingPlan, setBuildingPlan] = useState(false);
   const [resetting, setResetting] = useState(false);
   const gpxInputRef = useRef<HTMLInputElement>(null);
-  const [pending, startTransition] = useTransition();
+  const buildingRef = useRef(false);
+  /** Plan keys present when the current generation started — used to detect a fresh agent plan. */
+  const pendingKeysBeforeRef = useRef<Set<string> | null>(null);
+  const [, startTransition] = useTransition();
   /** Route-id fingerprints already shown — avoids agent plans being shadowed by stale demoPlan. */
   const seenPlanKeys = useRef(new Set<string>());
   const [morphFrom, setMorphFrom] = useState<GeoJSON.LineString | null>(null);
@@ -303,11 +296,15 @@ export function Chat() {
   const agentEnabled = agentConfigured && !error;
   const extracted = useMemo(() => extractFromMessages(messages), [messages]);
 
-  const generating =
-    pending || status === "streaming" || status === "submitted";
+  /**
+   * Only true while we are actively rebuilding routes — NOT React's useTransition
+   * pending (wizard saves / history loads were hiding a ready plan behind this step).
+   */
+  const localBusy = buildingPlan;
+  const agentBusy = status === "streaming" || status === "submitted";
 
   useEffect(() => {
-    if (!generating || selectingRoute) {
+    if (!buildingPlan) {
       const clear = window.setTimeout(() => setLocalStep(0), 0);
       return () => window.clearTimeout(clear);
     }
@@ -319,7 +316,7 @@ export function Chat() {
       window.clearTimeout(start);
       window.clearInterval(id);
     };
-  }, [generating, selectingRoute]);
+  }, [buildingPlan]);
 
   // Adopt new agent tool plans (regenerate/refine) that would otherwise be
   // shadowed by a stale demoPlan from hydration or a previous local build.
@@ -333,6 +330,17 @@ export function Chat() {
     void persistPlanAction(extracted.plan);
   }, [extracted.plan]);
 
+  // End the spinner as soon as a new agent plan lands.
+  useEffect(() => {
+    const before = pendingKeysBeforeRef.current;
+    if (!buildingPlan || !before || !extracted.plan) return;
+    const key = planRouteKey(extracted.plan);
+    if (before.has(key)) return;
+    pendingKeysBeforeRef.current = null;
+    buildingRef.current = false;
+    setBuildingPlan(false);
+  }, [extracted.plan, buildingPlan]);
+
   const rawPlan = demoPlan ?? extracted.plan;
   const plan =
     rawPlan && history
@@ -341,21 +349,111 @@ export function Chat() {
   const wizard =
     !wizardDirty && extracted.wizard ? extracted.wizard : localWizard;
 
-  const busy = generating;
+  const busy = localBusy || selectingRoute;
   const agentTransportError = error
     ? friendlyErrorMessage(
         error,
-        "Agent transport error — switched to local demo path.",
+        "Agent transport error — using Trigger ORS pipeline instead.",
       )
     : null;
   const displayError =
     localError ?? extracted.toolError ?? agentTransportError;
 
-  const submitText = (text: string) => {
-    if (!text.trim()) return;
+  const wizardSyncPrompt = (text: string, w: WizardState) =>
+    `${text}
+
+[Client wizard — pass these exact values into upsert_wizard_state and generate_route_candidates]
+durationMin=${w.durationMin}
+intensity=${w.intensity}
+terrainBias=${w.terrainBias}
+startPreset=${w.startPreset}
+startLabel=${w.startLabel}
+startLat=${w.startLat}
+startLng=${w.startLng}
+avoidBusyRoads=${w.avoidBusyRoads}
+ftpWatts=${w.ftpWatts}
+confirmed=true
+Call upsert_wizard_state with these fields, then generate_route_candidates with confirmWizard=true and the same wizard fields. Do not skip generation.`;
+
+  /** Agent-first when configured; Trigger ORS fan-out if the agent yields no plan. */
+  const runPlanGeneration = async (
+    patch: Partial<WizardState>,
+    userText: string,
+  ) => {
+    if (buildingRef.current) return;
+    buildingRef.current = true;
     setLocalError(null);
-    if (agentEnabled) {
-      void sendMessage({ text });
+    setBuildingPlan(true);
+    setLocalStep(0);
+
+    const nextWizard: WizardState = {
+      ...wizard,
+      ...patch,
+      sessionId,
+      confirmed: true,
+      goalsText: patch.goalsText ?? wizard.goalsText,
+    };
+    if (patch.startPreset && patch.startPreset !== "custom") {
+      const p = START_PRESETS[patch.startPreset];
+      nextWizard.startLat = p.lat;
+      nextWizard.startLng = p.lng;
+      nextWizard.startLabel = patch.startLabel ?? p.label;
+    }
+    setLocalWizard(nextWizard);
+    setWizardDirty(true);
+
+    const keysBefore = new Set(seenPlanKeys.current);
+    pendingKeysBeforeRef.current = keysBefore;
+
+    const hasNewPlan = () =>
+      [...seenPlanKeys.current].some((k) => !keysBefore.has(k));
+
+    try {
+      await updateWizardAction(sessionId, {
+        ...patch,
+        confirmed: true,
+        goalsText: nextWizard.goalsText,
+        startLat: nextWizard.startLat,
+        startLng: nextWizard.startLng,
+        startLabel: nextWizard.startLabel,
+        startPreset: nextWizard.startPreset,
+      });
+
+      if (agentEnabled) {
+        try {
+          await Promise.race([
+            sendMessage({
+              text: wizardSyncPrompt(userText, nextWizard),
+            }),
+            new Promise<void>((resolve) => {
+              window.setTimeout(resolve, AGENT_STREAM_CLIENT_MS);
+            }),
+          ]);
+        } catch {
+          setAgentConfigured(false);
+        }
+        await new Promise((r) => window.setTimeout(r, 80));
+        if (hasNewPlan()) return;
+      }
+
+      const built = await withTimeoutOrThrow(
+        generateDemoPlan(sessionId, {
+          ...nextWizard,
+          confirmed: true,
+        }),
+        PLAN_BUILD_CLIENT_MS,
+        "Plan generation timed out. Try Reset demo, or check Setup credentials.",
+      );
+      if (!hasNewPlan()) {
+        adoptPlan(built);
+        setLocalWizard(built.wizard);
+      }
+    } catch (err) {
+      setLocalError(friendlyErrorMessage(err, "Could not generate routes."));
+    } finally {
+      pendingKeysBeforeRef.current = null;
+      buildingRef.current = false;
+      setBuildingPlan(false);
     }
   };
 
@@ -378,30 +476,10 @@ export function Chat() {
   };
 
   const onConfirmWizard = () => {
-    setLocalError(null);
-    startTransition(async () => {
-      const confirmed = { ...wizard, confirmed: true };
-      setLocalWizard(confirmed);
-      setWizardDirty(true);
-      // Always rebuild on the Next server so the map updates immediately.
-      // Agent chat (if available) runs in parallel and must not block the UI.
-      try {
-        const built = await generateDemoPlan(sessionId, confirmed);
-        adoptPlan(built);
-        setLocalWizard(built.wizard);
-      } catch (err) {
-        setLocalError(
-          friendlyErrorMessage(err, "Could not generate routes."),
-        );
-        return;
-      }
-      if (agentEnabled) {
-        const prompt = `Confirm wizard and generate routes. durationMin=${confirmed.durationMin}, intensity=${confirmed.intensity}, terrainBias=${confirmed.terrainBias}, startPreset=${confirmed.startPreset}, startLabel=${confirmed.startLabel}, startLat=${confirmed.startLat}, startLng=${confirmed.startLng}, avoidBusyRoads=${confirmed.avoidBusyRoads}, ftpWatts=${confirmed.ftpWatts}. Goals: ${confirmed.goalsText || "endurance ride"}`;
-        void sendMessage({ text: prompt }).catch(() => {
-          setAgentConfigured(false);
-        });
-      }
-    });
+    void runPlanGeneration(
+      { ...wizard, confirmed: true },
+      `Confirm wizard and generate live ORS routes. Goals: ${wizard.goalsText || "endurance ride"}`,
+    );
   };
 
   const onSelectRoute = (routeId: string) => {
@@ -419,7 +497,6 @@ export function Chat() {
         setSelectingRoute(false);
       }
     });
-    // Sync agent in the background — don't block the map on first switch.
     if (agentEnabled) {
       void sendMessage({ text: `Select route ${routeId}` }).catch(() => {
         setAgentConfigured(false);
@@ -429,30 +506,12 @@ export function Chat() {
 
   const regenerateWithPatch = (
     patch: Partial<WizardState>,
-    agentPrompt?: string,
+    agentPrompt: string,
   ) => {
-    setLocalError(null);
-    const nextWizard = { ...wizard, ...patch, confirmed: true };
-    setLocalWizard(nextWizard);
-    setWizardDirty(true);
-
-    startTransition(async () => {
-      // UI-owned regenerate: always rebuild locally first so new routes paint.
-      // Previously agent-only path returned early and stale demoPlan hid tool output.
-      try {
-        const built = await generateDemoPlan(sessionId, nextWizard);
-        adoptPlan(built);
-        setLocalWizard(built.wizard);
-      } catch (err) {
-        setLocalError(friendlyErrorMessage(err, "Refine failed."));
-        return;
-      }
-      if (agentEnabled && agentPrompt) {
-        void sendMessage({ text: agentPrompt }).catch(() => {
-          setAgentConfigured(false);
-        });
-      }
-    });
+    void runPlanGeneration(
+      { ...wizard, ...patch, confirmed: true },
+      agentPrompt,
+    );
   };
 
   const onRefine = (kind: "shorter" | "hillier" | "easier") => {
@@ -564,11 +623,8 @@ export function Chat() {
     const prompt =
       "I have 90 minutes tomorrow morning near Amsterdam — endurance ride, some hills if possible, avoid busy roads.";
     setInput("");
-    setLocalError(null);
-    setWizardDirty(true);
     const parsed = parseGoalPrompt(prompt);
-    setLocalWizard((w) => ({
-      ...w,
+    const patch: Partial<WizardState> = {
       ...parsed,
       goalsText: prompt,
       startPreset: "custom",
@@ -576,43 +632,14 @@ export function Chat() {
       startLng: 4.8686,
       startLabel: "Vondelpark",
       avoidBusyRoads: true,
-    }));
-    startTransition(async () => {
-      // Local plan first so a Trigger/network blip never blocks the UI.
-      try {
-        const built = await generateDemoPlan(sessionId, {
-          ...parsed,
-          goalsText: prompt,
-          startPreset: "custom",
-          startLat: 52.3577,
-          startLng: 4.8686,
-          startLabel: "Vondelpark",
-          avoidBusyRoads: true,
-          confirmed: true,
-        });
-        adoptPlan(built);
-        setLocalWizard(built.wizard);
-        if (agentEnabled) {
-          void sendMessage({ text: prompt }).catch(() => {
-            setAgentConfigured(false);
-          });
-        }
-      } catch (err) {
-        console.error("Demo plan generation failed", err);
-        setLocalError(
-          friendlyErrorMessage(
-            err,
-            "Demo plan generation failed. Check ORS / ClickHouse keys.",
-          ),
-        );
-      }
-    });
+      confirmed: true,
+    };
+    void runPlanGeneration(patch, prompt);
   };
 
   const showWizard = Boolean(
     extracted.wizard || localWizard.goalsText || demoPlan,
   );
-  const steps = generatingSteps(extracted.activities);
   const progressChips = useMemo(
     () => toolProgressChips(extracted.activities),
     [extracted.activities],
@@ -649,26 +676,26 @@ export function Chat() {
     >
       <aside className="chat-pane">
         <header className="chat-pane__header">
-          <div className="chat-pane__brand-row">
+          <div className="chat-pane__brand-block">
             <BrandMark withWordmark size={32} />
-            <nav className="chat-nav" aria-label="App">
-              <button
-                type="button"
-                className="ghost chat-stack-link"
-                disabled={busy || resetting}
-                onClick={resetDemo}
-              >
-                {resetting ? "Resetting…" : "Reset demo"}
-              </button>
-              <Link href="/setup" className="ghost chat-stack-link">
-                Setup
-              </Link>
-              <Link href="/stack" className="ghost chat-stack-link">
-                Stack
-              </Link>
-            </nav>
+            <p className="tagline">Visual training plans — not walls of text</p>
           </div>
-          <p className="tagline">Visual training plans — not walls of text</p>
+          <nav className="chat-nav" aria-label="App">
+            <button
+              type="button"
+              className="ghost chat-nav__btn"
+              disabled={resetting}
+              onClick={resetDemo}
+            >
+              {resetting ? "Resetting…" : "Reset demo"}
+            </button>
+            <Link href="/setup" className="ghost chat-nav__btn">
+              Setup
+            </Link>
+            <Link href="/stack" className="ghost chat-nav__btn">
+              Stack
+            </Link>
+          </nav>
         </header>
 
         <div className="messages">
@@ -754,18 +781,18 @@ export function Chat() {
             onChange={(e) => onGpxSelected(e.target.files?.[0] ?? null)}
           />
 
-          {(busy || selectingRoute) && (
+          {localBusy || selectingRoute ? (
             <div className="status-banner" role="status" aria-live="polite">
               <p>
                 {selectingRoute
                   ? "Switching route — updating map and coach note…"
                   : `${LOCAL_GEN_STEPS[localStep] ?? "Working…"} Hang tight.`}
               </p>
-              {!selectingRoute ? (
+              {localBusy ? (
                 <ul className="tool-progress" aria-label="Generation progress">
                   {liveSteps.map((label, i) => (
                     <li
-                      key={label}
+                      key={`${label}-${i}`}
                       className={i === liveSteps.length - 1 ? "active" : "done"}
                     >
                       {label}
@@ -777,7 +804,12 @@ export function Chat() {
                 <span className="route-select-spinner" aria-hidden />
               </div>
             </div>
-          )}
+          ) : null}
+          {agentBusy && localBusy ? (
+            <p className="mode-note agent-bg-note" role="status">
+              Trigger agent running — ORS fan-out and ClickHouse scoring…
+            </p>
+          ) : null}
 
           {messages.map((m) => {
             const textParts = m.parts.filter(
@@ -818,27 +850,11 @@ export function Chat() {
             const text = input.trim();
             if (!text) return;
             const parsed = parseGoalPrompt(text);
-            setWizardDirty(true);
-            setLocalWizard((w) => ({ ...w, ...parsed, goalsText: text }));
-            setLocalError(null);
-            submitText(text);
-            // Always rebuild locally so the visual pane updates; agent is additive.
-            startTransition(async () => {
-              try {
-                const built = await generateDemoPlan(sessionId, {
-                  ...parsed,
-                  goalsText: text,
-                  confirmed: true,
-                });
-                adoptPlan(built);
-                setLocalWizard(built.wizard);
-              } catch (err) {
-                setLocalError(
-                  friendlyErrorMessage(err, "Could not build a local plan."),
-                );
-              }
-            });
             setInput("");
+            void runPlanGeneration(
+              { ...parsed, goalsText: text, confirmed: true },
+              text,
+            );
           }}
         >
           <input
@@ -859,10 +875,10 @@ export function Chat() {
 
         {!agentEnabled && (
           <p className="mode-note">
-            Local demo mode — Trigger or AI credentials missing.{" "}
-            <Link href="/setup">Open Setup</Link> to add Trigger.dev, ClickHouse,
-            and an AI provider. Routes still generate via golden/fallback
-            geometry.
+            Agent chat offline — Trigger or AI credentials missing.{" "}
+            <Link href="/setup">Open Setup</Link> to enable the full agent.
+            Plans still run through the Trigger ORS pipeline when Trigger is
+            configured.
           </p>
         )}
       </aside>
@@ -879,7 +895,7 @@ export function Chat() {
       />
 
       <main className="visual-pane">
-        {plan && !(busy && !selectingRoute) ? (
+        {plan && !localBusy ? (
           <div aria-busy={selectingRoute}>
             <PlanPanel
               key={`${plan.sessionId}-${plan.routes.map((r) => r.routeId).join("-")}-${plan.historyContext?.athleteId ?? "none"}`}
@@ -895,7 +911,7 @@ export function Chat() {
               morphFrom={morphFrom}
             />
           </div>
-        ) : busy ? (
+        ) : localBusy ? (
           <div className="visual-generating" aria-live="polite">
             <BrandMark withWordmark size={36} />
             <h1>Working on your plan…</h1>
@@ -903,33 +919,21 @@ export function Chat() {
             <div className="gen-progress" aria-hidden>
               <span className="route-select-spinner" />
             </div>
-            <TriggerFanout activities={extracted.activities} />
             <ol className="gen-steps">
-              {(progressChips.length > 0 ? steps : LOCAL_GEN_STEPS).map(
-                (step, i) => (
-                  <li
-                    key={step}
-                    className={
-                      progressChips.length > 0
-                        ? i === steps.length - 1
-                          ? "active"
-                          : ""
-                        : i === localStep
-                          ? "active"
-                          : i < localStep
-                            ? "done"
-                            : ""
-                    }
-                  >
-                    {step}
-                  </li>
-                ),
-              )}
+              {LOCAL_GEN_STEPS.map((step, i) => (
+                <li
+                  key={step}
+                  className={
+                    i === localStep ? "active" : i < localStep ? "done" : ""
+                  }
+                >
+                  {step}
+                </li>
+              ))}
             </ol>
             {plan ? (
               <p className="muted gen-note">
-                Updating from your latest goal — previous map stays until the
-                new routes are ready.
+                Updating from your latest goal — previous map returns when ready.
               </p>
             ) : null}
           </div>

@@ -15,9 +15,26 @@ import {
   setSessionAthlete,
   setWizard,
 } from "@/lib/session-store";
+import { toTaskWizard } from "@/lib/task-wizard";
 import type { Intensity, PlanPayload, StartPreset, TerrainBias } from "@/lib/types";
 import { generateRouteCandidatesTask } from "./generate-routes";
 import { scoreAndEnrichRoutesTask } from "./score-routes";
+
+const wizardPatchSchema = z.object({
+  goalsText: z.string().optional(),
+  durationMin: z.number().min(30).max(300).optional(),
+  intensity: z.enum(["easy", "endurance", "tempo", "hills"]).optional(),
+  terrainBias: z.enum(["flat", "rolling", "hilly"]).optional(),
+  startPreset: z
+    .enum(["centraal", "vondelpark", "amstel", "custom"])
+    .optional(),
+  startLat: z.number().optional(),
+  startLng: z.number().optional(),
+  startLabel: z.string().optional(),
+  avoidBusyRoads: z.boolean().optional(),
+  confirmed: z.boolean().optional(),
+  ftpWatts: z.number().min(80).max(500).nullable().optional(),
+});
 
 function createTools(sessionId: string) {
   return {
@@ -54,22 +71,8 @@ function createTools(sessionId: string) {
 
     upsert_wizard_state: tool({
       description:
-        "Create or update the interactive planning wizard from the rider's goals. Call this first.",
-      inputSchema: z.object({
-        goalsText: z.string().optional(),
-        durationMin: z.number().min(30).max(300).optional(),
-        intensity: z.enum(["easy", "endurance", "tempo", "hills"]).optional(),
-        terrainBias: z.enum(["flat", "rolling", "hilly"]).optional(),
-        startPreset: z
-          .enum(["centraal", "vondelpark", "amstel", "custom"])
-          .optional(),
-        startLat: z.number().optional(),
-        startLng: z.number().optional(),
-        startLabel: z.string().optional(),
-        avoidBusyRoads: z.boolean().optional(),
-        confirmed: z.boolean().optional(),
-        ftpWatts: z.number().min(80).max(500).nullable().optional(),
-      }),
+        "Create or update the interactive planning wizard from the rider's goals. Call this first. Always pass startLat/startLng/startLabel when the rider names a place.",
+      inputSchema: wizardPatchSchema,
       execute: async (patch) => {
         const current = getWizard(sessionId);
         const next = mergeWizard(current, {
@@ -94,29 +97,36 @@ function createTools(sessionId: string) {
 
     generate_route_candidates: tool({
       description:
-        "Generate 3 route candidates, score them in ClickHouse, and return the visual plan payload.",
-      inputSchema: z.object({
+        "Generate 3 live ORS route candidates via Trigger fan-out, score them in ClickHouse, and return the visual plan. Pass the full wizard fields so generation does not depend on another process's memory.",
+      inputSchema: wizardPatchSchema.extend({
         confirmWizard: z
           .boolean()
           .optional()
           .describe("Set true to mark wizard confirmed before generating"),
       }),
-      execute: async ({ confirmWizard }) => {
-        let wizard = getWizard(sessionId);
-        if (confirmWizard) {
-          wizard = { ...wizard, confirmed: true };
-          setWizard(wizard);
-        }
+      execute: async ({ confirmWizard, ...patch }) => {
+        const current = getWizard(sessionId);
+        let wizard = mergeWizard(current, {
+          ...patch,
+          intensity: patch.intensity as Intensity | undefined,
+          terrainBias: patch.terrainBias as TerrainBias | undefined,
+          startPreset: patch.startPreset as StartPreset | undefined,
+          ftpWatts: patch.ftpWatts === undefined ? undefined : patch.ftpWatts,
+          confirmed: confirmWizard ? true : patch.confirmed,
+        });
+        if (confirmWizard) wizard = { ...wizard, confirmed: true };
+        setWizard(wizard);
 
+        const taskWizard = toTaskWizard(wizard);
         const generated = await generateRouteCandidatesTask.triggerAndWait({
-          wizard,
+          wizard: taskWizard,
         });
         if (!generated.ok) {
           return { error: "Route generation failed", ui: "error" as const };
         }
 
         const scored = await scoreAndEnrichRoutesTask.triggerAndWait({
-          wizard,
+          wizard: taskWizard,
           rawRoutes: generated.output.routes,
         });
         if (!scored.ok) {
@@ -149,35 +159,38 @@ function createTools(sessionId: string) {
 
     refine_plan: tool({
       description:
-        "Adjust constraints (shorter, hillier, easier, etc.) and regenerate routes.",
-      inputSchema: z.object({
-        durationMin: z.number().optional(),
-        intensity: z.enum(["easy", "endurance", "tempo", "hills"]).optional(),
-        terrainBias: z.enum(["flat", "rolling", "hilly"]).optional(),
-        avoidBusyRoads: z.boolean().optional(),
+        "Adjust constraints (shorter, hillier, easier, etc.) and regenerate routes via Trigger ORS fan-out.",
+      inputSchema: wizardPatchSchema.extend({
         note: z.string().optional(),
       }),
       execute: async (patch) => {
         const current = getWizard(sessionId);
+        const { note, ...wizardPatch } = patch;
         const wizard = mergeWizard(current, {
-          ...patch,
-          intensity: patch.intensity as Intensity | undefined,
-          terrainBias: patch.terrainBias as TerrainBias | undefined,
+          ...wizardPatch,
+          intensity: wizardPatch.intensity as Intensity | undefined,
+          terrainBias: wizardPatch.terrainBias as TerrainBias | undefined,
+          startPreset: wizardPatch.startPreset as StartPreset | undefined,
+          ftpWatts:
+            wizardPatch.ftpWatts === undefined
+              ? undefined
+              : wizardPatch.ftpWatts,
           confirmed: true,
-          goalsText: patch.note
-            ? `${current.goalsText}\nRefine: ${patch.note}`
+          goalsText: note
+            ? `${current.goalsText}\nRefine: ${note}`
             : current.goalsText,
         });
         setWizard(wizard);
 
+        const taskWizard = toTaskWizard(wizard);
         const generated = await generateRouteCandidatesTask.triggerAndWait({
-          wizard,
+          wizard: taskWizard,
         });
         if (!generated.ok) {
           return { error: "Refine generation failed", ui: "error" as const };
         }
         const scored = await scoreAndEnrichRoutesTask.triggerAndWait({
-          wizard,
+          wizard: taskWizard,
           rawRoutes: generated.output.routes,
         });
         if (!scored.ok) {

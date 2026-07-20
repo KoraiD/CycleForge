@@ -14,6 +14,7 @@ const wizardSchema = z.object({
   startLabel: z.string().optional(),
   avoidBusyRoads: z.boolean(),
   confirmed: z.boolean(),
+  ftpWatts: z.number().min(80).max(500).nullable().optional(),
 });
 
 export const generateRouteCandidatesTask = schemaTask({
