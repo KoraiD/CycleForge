@@ -1,3 +1,4 @@
+import type { LeaveWindowHint } from "./types";
 import { WMO_SUMMARY } from "./weather-grid";
 
 export type HourlyWeather = {
@@ -9,20 +10,9 @@ export type HourlyWeather = {
   summary: string;
 };
 
-export type LeaveWindow = {
-  bestStartIso: string;
-  bestStartLabel: string;
-  score: number;
-  reason: string;
-  alternatives: Array<{
-    startIso: string;
-    label: string;
-    score: number;
-  }>;
-  hours: HourlyWeather[];
-};
+export type LeaveWindow = LeaveWindowHint;
 
-function scoreHour(h: HourlyWeather, rideHours: number): number {
+export function scoreHour(h: HourlyWeather, rideHours: number): number {
   // Prefer dry, moderate wind, mild temps across the ride window start hour.
   const precipPen = Math.min(h.precipMm * 28, 40);
   const windPen = Math.max(0, h.windKmh - 18) * 1.4;
@@ -31,6 +21,12 @@ function scoreHour(h: HourlyWeather, rideHours: number): number {
   const codePen = h.weatherCode >= 61 ? 18 : h.weatherCode >= 51 ? 8 : 0;
   const durationBump = Math.min(rideHours, 3) * 0.5;
   return Math.max(0, 100 - precipPen - windPen - tempPen - codePen - durationBump);
+}
+
+export function verdictForScore(score: number): "go" | "caution" | "no-go" {
+  if (score >= 72) return "go";
+  if (score >= 48) return "caution";
+  return "no-go";
 }
 
 function labelTime(iso: string): string {
@@ -121,13 +117,27 @@ export function pickBestLeaveWindow(
   if (best.hour.precipMm < 0.2) reasonBits.push("mostly dry");
   else reasonBits.push(`${best.hour.precipMm.toFixed(1)} mm precip`);
 
+  const scoredHours = hours.map((h) => {
+    const score = Math.round(scoreHour(h, rideHours));
+    return {
+      time: h.time,
+      label: labelTime(h.time),
+      score,
+      verdict: verdictForScore(score),
+      tempC: h.tempC,
+      windKmh: h.windKmh,
+      precipMm: h.precipMm,
+      summary: h.summary,
+    };
+  });
+
   return {
     bestStartIso: best.hour.time,
     bestStartLabel: labelTime(best.hour.time),
     score: best.score,
     reason: reasonBits.join(" · "),
     alternatives: alts,
-    hours,
+    hours: scoredHours,
   };
 }
 

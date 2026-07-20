@@ -9,39 +9,41 @@ Working directory for most commands: `apps/web`.
 ## 1. Prerequisites
 
 - Node.js **22+** and npm **10+**
-- Accounts / keys:
-  - [Trigger.dev](https://trigger.dev) — `TRIGGER_SECRET_KEY`, `TRIGGER_PROJECT_REF`
-  - [Google AI Studio](https://aistudio.google.com/apikey) — `GOOGLE_GENERATIVE_AI_API_KEY`
-  - [ClickHouse Cloud](https://clickhouse.com/cloud) — `CLICKHOUSE_*`
-  - [OpenRouteService](https://openrouteservice.org) — `ORS_API_KEY` (optional but recommended)
+- **Your own** keys (BYOK — nothing is bundled):
+  - [Trigger.dev](https://trigger.dev) — secret + project ref
+  - [ClickHouse Cloud](https://clickhouse.com/cloud) or self-hosted — HTTP URL + auth
+  - AI: [Google AI Studio](https://aistudio.google.com/apikey), OpenAI, Anthropic, **or** a local OpenAI-compatible server (Ollama / LM Studio)
+  - [OpenRouteService](https://openrouteservice.org) — optional
 
-Without Trigger/Google, the UI still runs in **local demo mode** (golden/fallback routes).
+Without Trigger/AI, the UI still runs in **local demo mode** (golden/fallback routes).
 
 ---
 
-## 2. Environment
+## 2. Environment (Setup UI)
+
+Recommended path:
 
 ```bash
 cd apps/web
-cp .env.example .env.local
+npm install
+npm run dev
 ```
 
-Fill at least:
+Open **http://localhost:3000/setup**, paste credentials, click **Save & apply**. That:
 
-| Variable | Purpose |
-| --- | --- |
-| `TRIGGER_SECRET_KEY` | Agent chat + durable tasks |
-| `TRIGGER_PROJECT_REF` | Trigger project id (`proj_…`) |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | Gemini via Google AI Studio |
-| `GOOGLE_GENERATIVE_AI_MODEL` | Optional; default `gemini-flash-latest` |
-| `CLICKHOUSE_URL` / `USER` / `PASSWORD` / `DATABASE` | Persist + SQL ranking |
-| `ORS_API_KEY` | Live Amsterdam bike geometries |
+1. Writes `apps/web/.data/runtime-config.json`
+2. Syncs `apps/web/.env.local` (gitignored)
+3. Pings ClickHouse and applies schema + seed when reachable
 
-Never commit `.env.local`.
+Then restart Next + `npm run dev:trigger`.
+
+Manual alternative: `cp .env.example .env.local` and fill vars (see README table). Never commit `.env.local` or `.data/`.
 
 ---
 
 ## 3. Install & seed ClickHouse
+
+If you used Setup with a working ClickHouse URL, seed already ran. Otherwise:
 
 ```bash
 cd apps/web
@@ -87,31 +89,38 @@ npm run dev:trigger
 curl -s http://localhost:3000/api/health | python3 -m json.tool
 ```
 
-Expect all `true` for a full agent demo:
+Expect configured flags for a full agent demo:
 
 ```json
 {
   "ok": true,
   "clickhouseConfigured": true,
   "orsConfigured": true,
+  "aiConfigured": true,
+  "aiProvider": "google",
   "googleConfigured": true,
   "triggerConfigured": true
 }
 ```
 
-If `triggerConfigured` or `googleConfigured` is false, the UI shows **local demo mode**.
+(`googleConfigured` mirrors `aiConfigured` for older clients.)
+
+If `triggerConfigured` or `aiConfigured` is false, the UI shows **local demo mode** and links to **/setup**.
 
 ---
 
 ## 5. Manual UI walkthrough
 
-1. Open [http://localhost:3000](http://localhost:3000).
-2. Optional: **Load demo athlete history** (CH fixture → coach note).
-3. Click **Try the demo prompt** (or paste your own goal).
-4. Confirm the **Plan Panel**: map, 3 candidates, elevation, TSS, coach note, tips.
-5. Click / hover routes — KPIs, elevation sync, and preview highlight update.
-6. Use **Tune this result** (or Shorter / Hillier / Easier) and **Apply & regenerate**.
-7. **Download GPX** and **Open summary** (print / copy link).
+Product demo features are listed in the root [README](../README.md). Quick path:
+
+1. Open [http://localhost:3000](http://localhost:3000) (or **/setup** first if keys are missing).
+2. Optional: **Load demo athlete history** (CH fixture → coach note + TSS calendar).
+3. Set start via **map / address** if you want a non-preset location.
+4. Click **Try the demo prompt** (or paste your own goal).
+5. Confirm the **Plan Panel**: map, 3 candidates, elevation, radar, score explain, commute verdict, TSS calendar (with history), coach note.
+6. Click / hover routes — KPIs, elevation sync, wind bands, preview highlight.
+7. Use **Tune this result** (or Shorter / Hillier / Easier) and **Apply & regenerate**.
+8. **Download GPX** and **Open summary**; optional **/stack** for live CH counts.
 
 Demo prompt:
 
@@ -136,6 +145,8 @@ npm run typecheck
 npm run test
 npm run test:watch     # while developing
 ```
+
+Unit coverage includes geometry, scoring, training, tips, fallbacks, plan builder, coach note, GPX, weather grid, best-leave (hourly verdicts), athlete history (`dailyLoad`), score explain, wind segments, and runtime-config **secret masking** (public API must not leak raw keys).
 
 CI runs the same checks on PRs to `main` (see `.github/workflows/ci.yml`).
 
@@ -259,7 +270,7 @@ Writes `src/data/golden-routes/{centraal,vondelpark,amstel}.json`. Requires `ORS
 
 | Symptom | What to check |
 | --- | --- |
-| “local demo mode” banner | `/api/health` — Trigger + Google keys |
+| “local demo mode” banner | `/api/health` — Trigger + AI keys; use `/setup` |
 | Agent hangs / no plan | Terminal 2 worker running? Trigger login done? |
 | Synthetic circles on map | ORS key missing/failing → golden/synthetic fallback |
 | Empty “similar rides” | `npm run seed:clickhouse` |

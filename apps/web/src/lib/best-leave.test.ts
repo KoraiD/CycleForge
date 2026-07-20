@@ -32,5 +32,15 @@ describe("pickBestLeaveWindow", () => {
     const win = pickBestLeaveWindow(hours, 90);
     expect(win?.bestStartIso).toContain("11:00");
     expect(win?.score).toBeGreaterThan(70);
+    expect(win?.hours).toHaveLength(3);
+    expect(win?.hours?.every((h) => ["go", "caution", "no-go"].includes(h.verdict))).toBe(
+      true,
+    );
+    const bestHour = win?.hours?.find((h) => h.time === win.bestStartIso);
+    expect(bestHour?.verdict).toBe("go");
+  });
+
+  it("returns null for empty hourly series", () => {
+    expect(pickBestLeaveWindow([], 60)).toBeNull();
   });
 });

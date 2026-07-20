@@ -33,6 +33,7 @@ import {
 } from "@/lib/types";
 import { BrandMark } from "./brand-mark";
 import { PlanPanel, type PlanTweak } from "./plan-panel";
+import { TriggerFanout } from "./trigger-fanout";
 import { Wizard } from "./wizard";
 
 type Msg = InferChatUIMessage<typeof cycleforgeAgent>;
@@ -145,10 +146,20 @@ export function Chat() {
   const [pending, startTransition] = useTransition();
   /** Route-id fingerprints already shown — avoids agent plans being shadowed by stale demoPlan. */
   const seenPlanKeys = useRef(new Set<string>());
+  const [morphFrom, setMorphFrom] = useState<GeoJSON.LineString | null>(null);
+  const prevPlanRef = useRef<PlanPayload | null>(null);
 
-  const adoptPlan = (plan: PlanPayload) => {
-    seenPlanKeys.current.add(planRouteKey(plan));
-    setDemoPlan(plan);
+  const adoptPlan = (next: PlanPayload) => {
+    const prev = prevPlanRef.current;
+    if (prev && planRouteKey(prev) !== planRouteKey(next)) {
+      const prevSelected =
+        prev.routes.find((r) => r.routeId === prev.selectedRouteId) ??
+        prev.routes[0];
+      if (prevSelected?.geometry) setMorphFrom(prevSelected.geometry);
+    }
+    prevPlanRef.current = next;
+    seenPlanKeys.current.add(planRouteKey(next));
+    setDemoPlan(next);
   };
 
   useEffect(() => {
@@ -158,12 +169,14 @@ export function Chat() {
       .then(
         (health: {
           triggerConfigured?: boolean;
+          aiConfigured?: boolean;
           googleConfigured?: boolean;
         }) => {
           if (!cancelled) {
-            setAgentConfigured(
-              Boolean(health.triggerConfigured && health.googleConfigured),
+            const aiOk = Boolean(
+              health.aiConfigured ?? health.googleConfigured,
             );
+            setAgentConfigured(Boolean(health.triggerConfigured && aiOk));
           }
         },
       )
@@ -186,6 +199,7 @@ export function Chat() {
         ]);
         if (cancelled) return;
         if (storedPlan) {
+          prevPlanRef.current = storedPlan;
           seenPlanKeys.current.add(planRouteKey(storedPlan));
           setDemoPlan(storedPlan);
           setLocalWizard(storedPlan.wizard);
@@ -222,8 +236,7 @@ export function Chat() {
     if (!extracted.plan) return;
     const key = planRouteKey(extracted.plan);
     if (seenPlanKeys.current.has(key)) return;
-    seenPlanKeys.current.add(key);
-    setDemoPlan(extracted.plan);
+    adoptPlan(extracted.plan);
     setLocalWizard(extracted.plan.wizard);
     setWizardDirty(true);
     void persistPlanAction(extracted.plan);
@@ -510,9 +523,14 @@ export function Chat() {
         <header className="chat-pane__header">
           <div className="chat-pane__brand-row">
             <BrandMark withWordmark size={32} />
-            <Link href="/stack" className="ghost chat-stack-link">
-              Stack
-            </Link>
+            <nav className="chat-nav" aria-label="App">
+              <Link href="/setup" className="ghost chat-stack-link">
+                Setup
+              </Link>
+              <Link href="/stack" className="ghost chat-stack-link">
+                Stack
+              </Link>
+            </nav>
           </div>
           <p className="tagline">Visual training plans — not walls of text</p>
         </header>
@@ -706,8 +724,10 @@ export function Chat() {
 
         {!agentEnabled && (
           <p className="mode-note">
-            Running in local demo mode (Trigger/Google AI unavailable). Routes
-            still generate via golden/fallback geometry + ClickHouse helpers.
+            Local demo mode — Trigger or AI credentials missing.{" "}
+            <Link href="/setup">Open Setup</Link> to add Trigger.dev, ClickHouse,
+            and an AI provider. Routes still generate via golden/fallback
+            geometry.
           </p>
         )}
       </aside>
@@ -729,6 +749,7 @@ export function Chat() {
               trainingBlock={trainingBlock}
               onCreateTrainingBlock={onCreateTrainingBlock}
               blockBusy={blockBusy}
+              morphFrom={morphFrom}
             />
           </div>
         ) : busy ? (
@@ -739,6 +760,7 @@ export function Chat() {
             <div className="gen-progress" aria-hidden>
               <span className="route-select-spinner" />
             </div>
+            <TriggerFanout activities={extracted.activities} />
             <ol className="gen-steps">
               {steps.map((step, i) => (
                 <li key={step} className={i === steps.length - 1 ? "active" : ""}>

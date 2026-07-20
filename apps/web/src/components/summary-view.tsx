@@ -7,12 +7,15 @@ import { ROUTE_COLORS } from "@/lib/constants";
 import { downloadRouteGpx } from "@/lib/gpx";
 import type { PlanPayload } from "@/lib/types";
 import { BrandMark } from "./brand-mark";
+import { CommuteVerdict } from "./commute-verdict";
 import { ElevationChart } from "./elevation-chart";
 import { HistoryChart } from "./history-chart";
-import { LeaveWindowCard } from "./leave-window";
 import { RouteMap } from "./route-map";
+import { RouteRadar } from "./route-radar";
 import { ScoreChart } from "./score-chart";
+import { ScoreExplainDrawer } from "./score-explain";
 import { TrainingBlock } from "./training-block";
+import { TssCalendar } from "./tss-calendar";
 
 function formatDuration(seconds: number) {
   const h = Math.floor(seconds / 3600);
@@ -188,13 +191,25 @@ export function SummaryView({
         {coachNote ? (
           <article className="coach-note" aria-label="Coaching suggestion">
             <p className="eyebrow">Coach note</p>
-            {coachNote.split("\n\n").map((para) => (
-              <p key={para.slice(0, 48)}>{para}</p>
+            {coachNote.split("\n\n").map((para, i) => (
+              <p key={`coach-${i}`}>{para}</p>
             ))}
           </article>
         ) : null}
 
-        {plan.leaveWindow ? <LeaveWindowCard leave={plan.leaveWindow} /> : null}
+        {plan.leaveWindow ? <CommuteVerdict leave={plan.leaveWindow} /> : null}
+
+        <RouteRadar
+          routes={plan.routes}
+          selectedRouteId={selected.routeId}
+          onSelect={(id) => {
+            setSelectedId(id);
+            setHoverKm(null);
+            setPreviewRouteId(null);
+          }}
+        />
+
+        <ScoreExplainDrawer route={selected} wizard={plan.wizard} />
 
         <div className="plan-grid">
           <div>
@@ -223,7 +238,10 @@ export function SummaryView({
               {plan.historyContext ? "Athlete load" : "Candidate span"}
             </h2>
             {plan.historyContext ? (
-              <HistoryChart history={plan.historyContext} />
+              <>
+                <HistoryChart history={plan.historyContext} />
+                <TssCalendar history={plan.historyContext} />
+              </>
             ) : (
               <div className="comparison-graphic">
                 <p>
@@ -307,8 +325,8 @@ export function SummaryView({
           <section>
             <h2>Tips</h2>
             <ul className="tips">
-              {selected.tips.map((tip) => (
-                <li key={tip}>{tip}</li>
+              {selected.tips.map((tip, i) => (
+                <li key={`tip-${i}`}>{tip}</li>
               ))}
             </ul>
           </section>
