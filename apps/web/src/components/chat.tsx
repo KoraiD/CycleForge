@@ -12,6 +12,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   useTransition,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -39,6 +40,12 @@ import { attachCoachNote } from "@/lib/coach-note";
 import { START_PRESETS } from "@/lib/constants";
 import { withTimeoutOrThrow } from "@/lib/fetch-timeout";
 import { friendlyErrorMessage } from "@/lib/friendly-error";
+import {
+  getServerPaneWidth,
+  readPaneWidth,
+  subscribePaneWidth,
+  writePaneWidth,
+} from "@/lib/pane-width";
 import { parseGoalPrompt } from "@/lib/parse-goal";
 import {
   DEFAULT_WIZARD,
@@ -164,34 +171,30 @@ export function Chat() {
   const seenPlanKeys = useRef(new Set<string>());
   const [morphFrom, setMorphFrom] = useState<GeoJSON.LineString | null>(null);
   const prevPlanRef = useRef<PlanPayload | null>(null);
-  // Always start at 400 so SSR HTML matches the first client render; restore
-  // the saved width after mount (reading localStorage in useState causes mismatch).
-  const [paneWidth, setPaneWidth] = useState(400);
+  // useSyncExternalStore: server snapshot is always 400; client reads localStorage
+  // after hydration — no SSR/client attribute mismatch.
+  const paneWidth = useSyncExternalStore(
+    subscribePaneWidth,
+    readPaneWidth,
+    getServerPaneWidth,
+  );
+  const [dragPaneWidth, setDragPaneWidth] = useState<number | null>(null);
+  const displayPaneWidth = dragPaneWidth ?? paneWidth;
   const resizingRef = useRef(false);
-
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem("cycleforge-pane-width");
-      const n = Number(saved);
-      if (Number.isFinite(n) && n >= 280 && n <= 720) setPaneWidth(n);
-    } catch {
-      /* ignore */
-    }
-  }, []);
 
   const onResizePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       event.preventDefault();
       resizingRef.current = true;
       const startX = event.clientX;
-      const startWidth = paneWidth;
+      const startWidth = displayPaneWidth;
       const target = event.currentTarget;
       target.setPointerCapture(event.pointerId);
 
       const onMove = (ev: PointerEvent) => {
         if (!resizingRef.current) return;
         const next = Math.min(720, Math.max(280, startWidth + ev.clientX - startX));
-        setPaneWidth(next);
+        setDragPaneWidth(next);
       };
       const onUp = (ev: PointerEvent) => {
         resizingRef.current = false;
@@ -202,19 +205,15 @@ export function Chat() {
         }
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
-        setPaneWidth((w) => {
-          try {
-            window.localStorage.setItem("cycleforge-pane-width", String(w));
-          } catch {
-            /* ignore */
-          }
-          return w;
+        setDragPaneWidth((w) => {
+          if (w !== null) writePaneWidth(w);
+          return null;
         });
       };
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
     },
-    [paneWidth],
+    [displayPaneWidth],
   );
 
   const adoptPlan = (next: PlanPayload) => {
@@ -690,7 +689,7 @@ Call upsert_wizard_state with these fields, then generate_route_candidates with 
   return (
     <div
       className="shell"
-      style={{ ["--chat-pane-width" as string]: `${paneWidth}px` }}
+      style={{ ["--chat-pane-width" as string]: `${displayPaneWidth}px` }}
     >
       <aside className="chat-pane">
         <header className="chat-pane__header">
@@ -900,7 +899,7 @@ Call upsert_wizard_state with these fields, then generate_route_candidates with 
         role="separator"
         aria-orientation="vertical"
         aria-label="Resize chat panel"
-        aria-valuenow={paneWidth}
+        aria-valuenow={displayPaneWidth}
         aria-valuemin={280}
         aria-valuemax={720}
         onPointerDown={onResizePointerDown}
