@@ -18,17 +18,15 @@ import { resolveWeather } from "./weather";
 
 export async function buildPlan(wizard: WizardState): Promise<PlanPayload> {
   await upsertSession(wizard, wizard.goalsText);
-  const weather = await resolveWeather(wizard.startLat, wizard.startLng);
-  const leaveWindow = await resolveBestLeave(
-    wizard.startLat,
-    wizard.startLng,
-    wizard.durationMin,
-  );
   const athleteId = getSessionAthlete(wizard.sessionId);
-  const historyContext = athleteId
-    ? ((await getHistoryContext(athleteId)) ?? undefined)
-    : undefined;
-  const rawRoutes = await generateRawRoutes(wizard);
+  const [weather, leaveWindow, historyContext, rawRoutes] = await Promise.all([
+    resolveWeather(wizard.startLat, wizard.startLng),
+    resolveBestLeave(wizard.startLat, wizard.startLng, wizard.durationMin),
+    athleteId
+      ? getHistoryContext(athleteId).then((h) => h ?? undefined)
+      : Promise.resolve(undefined),
+    generateRawRoutes(wizard),
+  ]);
 
   const routes: RouteCandidate[] = [];
   for (const raw of rawRoutes) {

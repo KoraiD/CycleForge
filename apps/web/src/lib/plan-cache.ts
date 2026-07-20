@@ -1,4 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from "fs";
 import { join } from "path";
 import type { PlanPayload } from "./types";
 
@@ -30,5 +36,14 @@ export function readCachedPlan(sessionId: string): PlanPayload | null {
   } catch (err) {
     console.warn("readCachedPlan failed", err);
     return null;
+  }
+}
+
+export function clearCachedPlan(sessionId: string): void {
+  const path = join(DIR, `${sessionId}.json`);
+  try {
+    if (existsSync(path)) unlinkSync(path);
+  } catch (err) {
+    console.warn("clearCachedPlan failed", err);
   }
 }
