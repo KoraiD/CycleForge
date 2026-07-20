@@ -179,6 +179,7 @@ export function Chat() {
     getServerPaneWidth,
   );
   const [dragPaneWidth, setDragPaneWidth] = useState<number | null>(null);
+  const dragPaneWidthRef = useRef<number | null>(null);
   const displayPaneWidth = dragPaneWidth ?? paneWidth;
   const resizingRef = useRef(false);
 
@@ -194,6 +195,7 @@ export function Chat() {
       const onMove = (ev: PointerEvent) => {
         if (!resizingRef.current) return;
         const next = Math.min(720, Math.max(280, startWidth + ev.clientX - startX));
+        dragPaneWidthRef.current = next;
         setDragPaneWidth(next);
       };
       const onUp = (ev: PointerEvent) => {
@@ -205,10 +207,12 @@ export function Chat() {
         }
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
-        setDragPaneWidth((w) => {
-          if (w !== null) writePaneWidth(w);
-          return null;
-        });
+        const finalWidth = dragPaneWidthRef.current;
+        dragPaneWidthRef.current = null;
+        setDragPaneWidth(null);
+        // Persist outside the setState updater — writing inside it re-enters Chat
+        // via useSyncExternalStore while React is still applying the drag state.
+        if (finalWidth !== null) writePaneWidth(finalWidth);
       };
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
