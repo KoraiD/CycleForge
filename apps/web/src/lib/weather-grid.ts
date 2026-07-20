@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "./fetch-timeout";
 import type { WeatherSnapshot } from "./types";
 
 /** ~5.5 km tiles — enough for metro-scale nearest-neighbor lookups. */
@@ -100,7 +101,7 @@ export async function fetchOpenMeteoCurrent(
     );
     url.searchParams.set("wind_speed_unit", "kmh");
 
-    const res = await fetch(url.toString());
+    const res = await fetchWithTimeout(url.toString(), {}, 8000);
     if (!res.ok) return null;
     const data = (await res.json()) as {
       current?: {
