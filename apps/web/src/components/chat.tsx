@@ -66,10 +66,16 @@ const LOCAL_GEN_STEPS = [
   "Building the visual plan…",
 ];
 
-/** Hard ceiling so a hung server action cannot leave the UI spinning forever. */
+  /** Hard ceiling so a hung server action cannot leave the UI spinning forever. */
 const PLAN_BUILD_CLIENT_MS = 60_000;
 /** Don't let a stuck agent stream block the Trigger ORS fallback forever. */
 const AGENT_STREAM_CLIENT_MS = 55_000;
+/**
+ * Grace window to let the agent's streamed tool plan land in `messages` after
+ * `sendMessage` resolves. The stream's React state update is async; without
+ * polling for the actual plan we checked too early and fell back to demo.
+ */
+const AGENT_PLAN_GRACE_MS = 8_000;
 
 function planRouteKey(plan: PlanPayload): string {
   return plan.routes.map((r) => r.routeId).join("|");
@@ -427,10 +433,16 @@ Call upsert_wizard_state with these fields, then generate_route_candidates with 
       });
 
       if (agentEnabled) {
+        // Track whether the agent stream actually completed. `sendMessage`
+        // rejects on transport/AI errors; a resolved promise means the agent
+        // ran and its tool pipeline (ORS fan-out + ClickHouse scoring) executed.
+        let agentCompleted = false;
         try {
           await Promise.race([
             sendMessage({
               text: wizardSyncPrompt(userText, nextWizard),
+            }).then(() => {
+              agentCompleted = true;
             }),
             new Promise<void>((resolve) => {
               window.setTimeout(resolve, AGENT_STREAM_CLIENT_MS);
@@ -439,7 +451,18 @@ Call upsert_wizard_state with these fields, then generate_route_candidates with 
         } catch {
           setAgentConfigured(false);
         }
-        await new Promise((r) => window.setTimeout(r, 80));
+
+        // The agent's tool plan arrives via streamed message parts, applied
+        // asynchronously by React. Poll briefly for it instead of assuming a
+        // fixed delay — otherwise we fall back to demo and discard real work.
+        const deadline = Date.now() + AGENT_PLAN_GRACE_MS;
+        while (!hasNewPlan() && Date.now() < deadline) {
+          await new Promise((r) => window.setTimeout(r, 120));
+        }
+        // If the agent ran to completion, its plan is the source of truth.
+        // Never overwrite it with a demo build — return even if the plan is
+        // still streaming in (the adoption effect renders it when it lands).
+        if (agentCompleted) return;
         if (hasNewPlan()) return;
       }
 
