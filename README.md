@@ -212,6 +212,18 @@ curl -s http://localhost:3000/api/health | python3 -m json.tool
 
 ---
 
+## Community & contributing
+
+CycleForge is open-source and we'd love contributions. Please read
+[CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR, follow the
+[Code of Conduct](CODE_OF_CONDUCT.md), and use the
+[issue templates](.github/ISSUE_TEMPLATE) for bugs and feature requests.
+
+Found a security issue or a leaked secret? See [SECURITY.md](SECURITY.md) —
+report it privately via a GitHub security advisory rather than a public issue.
+
+---
+
 ## Project layout
 
 ```text
