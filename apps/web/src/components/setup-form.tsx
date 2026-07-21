@@ -383,9 +383,10 @@ export function SetupForm() {
       </div>
 
       <p className="upload-note">
-        After save: restart <code>npm run dev</code> and{" "}
-        <code>npm run dev:trigger</code>. Optional:{" "}
-        <code>npm run ingest:weather</code> to refresh the weather grid.
+        Changes apply to this app immediately — no restart needed. Only restart{" "}
+        <code>npm run dev:trigger</code> if you run the Trigger worker locally.
+        Optional: <code>npm run ingest:weather</code> to refresh the weather
+        grid.
       </p>
     </main>
   );

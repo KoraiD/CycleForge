@@ -34,8 +34,9 @@ Open **http://localhost:3000/setup**, paste credentials, click **Save & apply**.
 1. Writes `apps/web/.data/runtime-config.json`
 2. Syncs `apps/web/.env.local` (gitignored)
 3. Pings ClickHouse and applies schema + seed when reachable
+4. Applies the new values to the running Next server immediately — no restart needed
 
-Then restart Next + `npm run dev:trigger`.
+Only restart `npm run dev:trigger` if you run the Trigger worker locally (it reads env at its own startup).
 
 Manual alternative: `cp .env.example .env.local` and fill vars (see README table). Never commit `.env.local` or `.data/`.
 

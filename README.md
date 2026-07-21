@@ -130,8 +130,8 @@ npm run dev
 
 1. Open **http://localhost:3000/setup**  
 2. Paste your Trigger, ClickHouse, and AI details → **Save & apply**  
-   (saves locally to `.data/` + `.env.local`, pings ClickHouse, seeds tables when reachable)  
-3. Restart the UI, then in a second terminal: `npm run dev:trigger`  
+   (saves locally to `.data/` + `.env.local`, pings ClickHouse, seeds tables when reachable — applies to the running app immediately)  
+3. Optional, for the live agent pipeline: `npm run dev:trigger` in a second terminal  
 4. Open **http://localhost:3000** → Load demo athlete → Try the demo prompt  
 
 **Without** Trigger or AI keys, the planner still works in **local demo mode** (cached/fallback routes) so you can explore the UI.
