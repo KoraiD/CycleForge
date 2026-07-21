@@ -12,6 +12,11 @@ import Map, {
 import "maplibre-gl/dist/maplibre-gl.css";
 import { ROUTE_COLORS } from "@/lib/constants";
 import { nearestKmAlongLine, pointAtKm } from "@/lib/geometry";
+import {
+  roadMixForRoute,
+  roadTypeGeometries,
+  ROAD_TYPE_META,
+} from "@/lib/road-types";
 import type { RouteCandidate } from "@/lib/types";
 import {
   buildWindSegments,
@@ -66,6 +71,7 @@ export function RouteMap({
   const [hintVisible, setHintVisible] = useState(true);
   const [legendOpen, setLegendOpen] = useState(true);
   const [morphOpacity, setMorphOpacity] = useState(0);
+  const [showRoadTypes, setShowRoadTypes] = useState(true);
 
   useEffect(() => {
     if (!morphFrom) {
@@ -106,6 +112,16 @@ export function RouteMap({
     if (hoverKm === null || hoverKm === undefined || !selected) return null;
     return pointAtKm(selected.geometry.coordinates, hoverKm);
   }, [hoverKm, selected]);
+
+  const roadTypeSegs = useMemo(() => {
+    if (!selected || !showRoadTypes) return [];
+    return roadTypeGeometries(selected, roadMixForRoute(selected));
+  }, [selected, showRoadTypes]);
+
+  const roadTypesPresent = useMemo(() => {
+    if (!selected) return [];
+    return [...new Set(roadMixForRoute(selected).kmByType.map((t) => t.type))];
+  }, [selected]);
 
   useEffect(() => {
     if (!hintVisible) return;
@@ -208,6 +224,32 @@ export function RouteMap({
             />
           </Source>
         ) : null}
+        {roadTypeSegs.map((seg, i) => (
+          <Source
+            key={`road-${i}-${seg.type}`}
+            id={`road-seg-${i}`}
+            type="geojson"
+            data={{
+              type: "Feature",
+              properties: {},
+              geometry: { type: "LineString", coordinates: seg.coordinates },
+            }}
+          >
+            <Layer
+              id={`road-line-${i}`}
+              type="line"
+              paint={{
+                "line-color": ROAD_TYPE_META[seg.type].color,
+                "line-width": 3.2,
+                "line-opacity": 0.9,
+                ...(ROAD_TYPE_META[seg.type].pattern
+                  ? { "line-dasharray": ROAD_TYPE_META[seg.type].pattern === "dot" ? [0.6, 1.6] : [2.2, 1.4] }
+                  : {}),
+              }}
+              layout={{ "line-cap": "round", "line-join": "round" }}
+            />
+          </Source>
+        ))}
         {windSegments.map((seg, i) => (
           <Source
             key={`wind-${i}-${seg.fromKm}`}
@@ -347,6 +389,28 @@ export function RouteMap({
             <span className="wind-legend__h">Head</span>
             <span className="wind-legend__c">Cross</span>
             <span className="wind-legend__t">Tail</span>
+          </div>
+        ) : null}
+        <button
+          type="button"
+          className={showRoadTypes ? "map-road-toggle on" : "map-road-toggle"}
+          onClick={() => setShowRoadTypes((v) => !v)}
+          title="Toggle road-type coloring on the selected route"
+          aria-pressed={showRoadTypes}
+        >
+          Roads
+        </button>
+        {showRoadTypes && roadTypesPresent.length > 0 ? (
+          <div className="road-legend" title="Road types under the route line">
+            {roadTypesPresent.map((t) => (
+              <span key={t} className="road-legend__item">
+                <span
+                  className={`road-legend__swatch${ROAD_TYPE_META[t].pattern ? ` road-legend__swatch--${ROAD_TYPE_META[t].pattern}` : ""}`}
+                  style={{ backgroundColor: ROAD_TYPE_META[t].color }}
+                />
+                {ROAD_TYPE_META[t].label}
+              </span>
+            ))}
           </div>
         ) : null}
         <button

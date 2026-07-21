@@ -8,6 +8,46 @@ You describe the ride you want. The app answers with **three route options on a 
 
 ---
 
+## Architecture at a glance
+
+```
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │                         Browser — React 19 UI                       │
+  │  Chat ▸ interactive wizard ▸ visual plan panel                      │
+  │  map + road types · mini route cards · elevation · TSS zones        │
+  │  "Should I cycle?" hourly weather strip (8 metrics per hour)        │
+  └──────────────┬──────────────────────────────────────────────────────┘
+                 │  server actions · AI SDK tools · REST
+                 ▼
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │              Next.js 16 — app server + plan builder                 │
+  │  wizard state → route gen → scoring → coach note → plan payload     │
+  └───┬───────────────────────────────┬─────────────────────────────────┘
+      │ durable tasks                 │ SQL (JSONEachRow)
+      ▼                               ▼
+  ┌──────────────────────┐   ┌─────────────────────────────────────────┐
+  │     Trigger.dev      │   │              ClickHouse                 │
+  │  cycleforge-agent    │   │  plan_sessions      routes              │
+  │  ├ generate routes   │   │  route_scores       route_scores_ranked │
+  │  ├ fetch-ors ×3 ∥    │   │  weather_forecast_grid                  │
+  │  ├ score + enrich    │   │  rider_history_rides                    │
+  │  └ weather cron      │   │  training_blocks                        │
+  └──────────┬───────────┘   └─────────────────────────────────────────┘
+             │ best-effort, always with fallback
+             ▼
+  ┌──────────────────────┐   ┌─────────────────────────────────────────┐
+  │   OpenRouteService   │   │              Open-Meteo                 │
+  │  3 loop candidates   │   │  current + hourly: temp · wind · rain   │
+  │  + elevation profile │   │  humidity · UV · visibility · AQI       │
+  └──────────────────────┘   └─────────────────────────────────────────┘
+```
+
+Zero-config resilience: every external box has an in-repo fallback (synthetic
+loops, in-memory ClickHouse, local demo agent), so the UI works end-to-end
+with **no keys at all**.
+
+---
+
 ## Try the demo (what judges / visitors should see)
 
 Use this prompt (or click **Try the demo prompt** in the UI):
@@ -25,9 +65,12 @@ Use this prompt (or click **Try the demo prompt** in the UI):
 | Scrub “Should I cycle?” hours | Best leave window from hourly weather (go / caution / wait) |
 | Open “Explain this score” | Plain-language + SQL-flavored breakdown of ClickHouse ranking |
 | Compare on the radar chart | Goal fit · quiet · scenic · weather across candidates |
+| Scrub the route cards | Each card **draws the loop** it proposes — shape at a glance |
+| Read the road strip | Road types colored **on the map** + per-km summary (cycleway / paved / urban / gravel) |
+| Check “Should I cycle?” | Temp · wind · rain · sun · humidity · UV · visibility · air quality, plus a per-hour visual strip |
 | Tune & regenerate | Shorter / hillier / easier (or sliders) without leaving the plan |
 | Download GPX · Open summary | Export the ride; share a printable visual summary |
-| Open **Stack** | Live ClickHouse counts + Trigger run peek for the “how it works” story |
+| Open **Stack** | Visual architecture + **live ClickHouse table charts + Trigger run chart** |
 
 Optional while generating: a **Trigger fan-out** graphic shows durable ORS + scoring steps.
 
@@ -102,25 +145,51 @@ Security notes: **[SECURITY.md](SECURITY.md)**.
 | **Scalability & impact (10%)** | Session/route tables + seed corpus; BYOK so others can host |
 | **Presentation (5%)** | Clear demo path above + ≤5 min script in SUBMIT |
 
-### How the pieces connect
+### Tech stack
 
-```text
-Browser (Next.js)
-  ├─ Chat + wizard + plan panel (map, charts, coach note)
-  └─ Setup (your Trigger / ClickHouse / AI keys)
+| Layer | Tech | What it does here |
+| --- | --- | --- |
+| **UI** | Next.js 16 · React 19 · MapLibre · Recharts | Chat, wizard, plan panel, road-type map overlay, hourly weather strip |
+| **Agent** | Trigger.dev `chat.agent()` + AI SDK | Wizard tools, route generation fan-out, score & enrich, weather cron |
+| **Analytics** | ClickHouse (Cloud or self-hosted) | Sessions, routes, SQL ranking, weather grid, athlete history, blocks |
+| **Data** | OpenRouteService · Open-Meteo (+ AQ API) | Loop geometry + elevation; hourly temp/wind/rain/humidity/UV/visibility/AQI |
+| **Quality** | TypeScript · Vitest · ESLint · GH Actions | `npm run check` — 56 unit tests, typed plan payload |
+
+### Flow: from sentence to ride
+
+```
+ "90 min endurance, some hills, avoid busy roads"
         │
         ▼
-Trigger.dev  cycleforge-agent  (chat.agent)
-  tools → generate routes → score & enrich
-        │
-        ├─ fetch-ors-route ×3 in parallel
-        ├─ score-and-enrich-routes
-        └─ ingest-weather-grid (schedule / CLI)
+ ① Chat agent (Trigger) parses goals → wizard state
         │
         ▼
-ClickHouse
-  plan_sessions · routes · route_scores · route_scores_ranked
-  weather_forecast_grid · rider_history_rides · training_blocks
+ ② 3 ORS loop candidates fetched in parallel (fallback: synthetic loops)
+        │
+        ▼
+ ③ Score & enrich: training effect · weather · tips → ClickHouse writes
+        │
+        ▼
+ ④ SQL ranking + similar rides read back from ClickHouse
+        │
+        ▼
+ ⑤ Visual plan: map w/ road types · mini route cards · elevation
+    TSS zones · coach note · "Should I cycle?" hourly strip
+        │
+        ▼
+ ⑥ Refine in place (shorter / hillier / easier) → back to ②
+```
+
+### Flow: hourly weather into “Should I cycle?”
+
+```
+ Open-Meteo hourly API ─┐
+                        ├─► best-leave scorer ─► go / caution / wait per hour
+ Open-Meteo AQ API ────┘         │
+                                 ▼
+              LeaveWindowHint { hours[] } ─► strip UI
+              temp curve · wind row · rain mm · sun %
+              humidity · UV · visibility · AQI (8 metric cells)
 ```
 
 ---

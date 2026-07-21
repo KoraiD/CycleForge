@@ -53,6 +53,15 @@ export type HourlyRideScore = {
   windKmh: number;
   precipMm: number;
   summary: string;
+  /** WMO weather code for iconography. */
+  weatherCode?: number;
+  humidityPct?: number | null;
+  uvIndex?: number | null;
+  visibilityM?: number | null;
+  /** European Air Quality Index (0–100+), from Open-Meteo air-quality API. */
+  aqi?: number | null;
+  cloudCoverPct?: number | null;
+  isDay?: boolean;
 };
 
 export type LeaveWindowHint = {
