@@ -431,9 +431,9 @@ export function RouteMap({
           type="button"
           className="map-fit-btn"
           onClick={fitSelected}
-          title="Zoom to fit the selected route"
+          title="Center the map on the selected route"
         >
-          Fit
+          Center on route
         </button>
         <button
           type="button"

@@ -201,15 +201,21 @@ export function publicRuntimeConfig(config = readRuntimeConfig()) {
   return {
     triggerConfigured: Boolean(config.triggerSecretKey),
     triggerProjectRef: config.triggerProjectRef,
+    triggerProjectRefMasked: maskSecret(config.triggerProjectRef),
     clickhouseConfigured: Boolean(config.clickhouseUrl),
     clickhouseUrlHost: config.clickhouseUrl
       ? config.clickhouseUrl.replace(/^https?:\/\//, "").split("/")[0]
       : "",
+    clickhouseUrlMasked: maskSecret(config.clickhouseUrl),
     clickhouseUser: config.clickhouseUser,
+    clickhouseUserMasked: maskSecret(config.clickhouseUser),
     clickhouseDatabase: config.clickhouseDatabase,
+    clickhouseDatabaseMasked: maskSecret(config.clickhouseDatabase),
     orsConfigured: Boolean(config.orsApiKey),
+    orsApiKeyMasked: maskSecret(config.orsApiKey),
     aiProvider: config.aiProvider,
     aiModel: config.aiModel,
+    aiModelMasked: maskSecret(config.aiModel),
     aiBaseUrl: config.aiBaseUrl,
     aiConfigured: Boolean(
       config.aiApiKey ||

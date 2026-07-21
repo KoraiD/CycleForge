@@ -241,6 +241,34 @@ export function StackView({ stats: initial }: { stats: StackStats }) {
         </div>
       </section>
 
+      <section>
+        <h2>Latest summary links</h2>
+        {stats.samples.summaryUrls.length === 0 ? (
+          <p className="muted">
+            No plans yet — generate a plan and its shareable summary URL will
+            appear here.
+          </p>
+        ) : (
+          <ul className="stack-list stack-summaries">
+            {stats.samples.summaryUrls.map((s) => (
+              <li key={s.sessionId}>
+                <a
+                  href={`/summary/${s.sessionId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="stack-summaries__link"
+                >
+                  /summary/{s.sessionId.slice(0, 8)}…
+                </a>
+                <span className="stack-badge">{s.status}</span>
+                {s.createdAt ? <span>{s.createdAt}</span> : null}
+                <span className="stack-summaries__goals">{s.goals || "—"}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       <section className="stack-grid">
         <div>
           <h2>Weather grid sample</h2>

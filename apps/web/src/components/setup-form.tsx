@@ -8,13 +8,19 @@ import { BrandMark } from "./brand-mark";
 type PublicConfig = {
   triggerConfigured: boolean;
   triggerProjectRef: string;
+  triggerProjectRefMasked: string;
   clickhouseConfigured: boolean;
   clickhouseUrlHost: string;
+  clickhouseUrlMasked: string;
   clickhouseUser: string;
+  clickhouseUserMasked: string;
   clickhouseDatabase: string;
+  clickhouseDatabaseMasked: string;
   orsConfigured: boolean;
+  orsApiKeyMasked: string;
   aiProvider: AiProvider;
   aiModel: string;
+  aiModelMasked: string;
   aiBaseUrl: string;
   aiConfigured: boolean;
   aiApiKeyMasked: string;
@@ -33,6 +39,78 @@ const PROVIDERS: Array<{ id: AiProvider; label: string; hint: string }> = [
     hint: "OpenAI-compatible base URL",
   },
 ];
+
+/**
+ * Read-only display of a saved value: dotted by default, with a reveal toggle.
+ * The real value is only rendered into the DOM after the user reveals it.
+ */
+function DottedValue({ value, masked }: { value: string; masked: string }) {
+  const [shown, setShown] = useState(false);
+  if (!value) return <span className="secret-value__empty">not set</span>;
+  return (
+    <span className="secret-value">
+      <code className="secret-value__text">{shown ? value : masked || "••••"}</code>
+      <button
+        type="button"
+        className="secret-value__toggle"
+        onClick={() => setShown((v) => !v)}
+        aria-pressed={shown}
+        aria-label={shown ? "Hide value" : "Reveal value"}
+        title={shown ? "Hide value" : "Reveal value"}
+      >
+        {shown ? "Hide" : "Reveal"}
+      </button>
+    </span>
+  );
+}
+
+/**
+ * Editable secret field: shows the saved value dotted (password input) with a
+ * reveal toggle. Typing replaces it; an empty field keeps the saved value.
+ */
+function SecretField({
+  label,
+  saved,
+  value,
+  onChange,
+  placeholder,
+  autoComplete = "off",
+}: {
+  label: React.ReactNode;
+  saved: boolean;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  autoComplete?: string;
+}) {
+  const [shown, setShown] = useState(false);
+  const editing = value !== "";
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <span className="secret-field">
+        <input
+          type={shown ? "text" : "password"}
+          autoComplete={autoComplete}
+          placeholder={placeholder ?? (saved ? "saved · type to replace" : "")}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        <button
+          type="button"
+          className="secret-field__toggle"
+          onClick={() => setShown((v) => !v)}
+          aria-pressed={shown}
+          aria-label={shown ? "Hide value" : "Reveal value"}
+          title={shown ? "Hide value" : "Reveal value"}
+          disabled={!editing && !saved}
+        >
+          {shown ? "Hide" : "Reveal"}
+        </button>
+      </span>
+    </label>
+  );
+}
 
 export function SetupForm() {
   const [loading, setLoading] = useState(true);
@@ -179,9 +257,11 @@ export function SetupForm() {
         <label className="field">
           <span>
             Secret key{" "}
-            {pub?.triggerSecretMasked
-              ? `(saved ${pub.triggerSecretMasked})`
-              : ""}
+            {pub?.triggerSecretMasked ? (
+              <code className="secret-value__text">{pub.triggerSecretMasked}</code>
+            ) : (
+              ""
+            )}
           </span>
           <input
             type="password"
@@ -191,36 +271,44 @@ export function SetupForm() {
             onChange={(e) => setTriggerSecretKey(e.target.value)}
           />
         </label>
-        <label className="field">
-          <span>Project ref</span>
+        <div className="field">
+          <span>
+            Project ref{" "}
+            <DottedValue
+              value={pub?.triggerProjectRef ?? ""}
+              masked={pub?.triggerProjectRefMasked ?? ""}
+            />
+          </span>
           <input
             value={triggerProjectRef}
             placeholder="proj_…"
             onChange={(e) => setTriggerProjectRef(e.target.value)}
           />
-        </label>
+        </div>
       </section>
 
       <section className="setup-section">
         <h2>ClickHouse</h2>
-        <label className="field">
+        <SecretField
+          label="URL"
+          saved={pub?.clickhouseConfigured ?? false}
+          value={clickhouseUrl}
+          onChange={setClickhouseUrl}
+          placeholder="https://xxx.clickhouse.cloud:8443"
+        />
+        <div className="field">
           <span>
-            URL{" "}
-            {pub?.clickhouseUrlHost ? `(saved ${pub.clickhouseUrlHost})` : ""}
+            User{" "}
+            <DottedValue
+              value={pub?.clickhouseUser ?? ""}
+              masked={pub?.clickhouseUserMasked ?? ""}
+            />
           </span>
-          <input
-            value={clickhouseUrl}
-            placeholder="https://xxx.clickhouse.cloud:8443"
-            onChange={(e) => setClickhouseUrl(e.target.value)}
-          />
-        </label>
-        <label className="field">
-          <span>User</span>
           <input
             value={clickhouseUser}
             onChange={(e) => setClickhouseUser(e.target.value)}
           />
-        </label>
+        </div>
         <label className="field">
           <span>
             Password{" "}
@@ -233,13 +321,19 @@ export function SetupForm() {
             onChange={(e) => setClickhousePassword(e.target.value)}
           />
         </label>
-        <label className="field">
-          <span>Database</span>
+        <div className="field">
+          <span>
+            Database{" "}
+            <DottedValue
+              value={pub?.clickhouseDatabase ?? ""}
+              masked={pub?.clickhouseDatabaseMasked ?? ""}
+            />
+          </span>
           <input
             value={clickhouseDatabase}
             onChange={(e) => setClickhouseDatabase(e.target.value)}
           />
-        </label>
+        </div>
       </section>
 
       <section className="setup-section">
@@ -259,7 +353,11 @@ export function SetupForm() {
         <label className="field">
           <span>
             API key{" "}
-            {pub?.aiApiKeyMasked ? `(saved ${pub.aiApiKeyMasked})` : ""}
+            {pub?.aiApiKeyMasked ? (
+              <code className="secret-value__text">{pub.aiApiKeyMasked}</code>
+            ) : (
+              ""
+            )}
           </span>
           <input
             type="password"
@@ -273,13 +371,19 @@ export function SetupForm() {
             onChange={(e) => setAiApiKey(e.target.value)}
           />
         </label>
-        <label className="field">
-          <span>Model id</span>
+        <div className="field">
+          <span>
+            Model id{" "}
+            <DottedValue
+              value={pub?.aiModel ?? ""}
+              masked={pub?.aiModelMasked ?? ""}
+            />
+          </span>
           <input
             value={aiModel}
             onChange={(e) => setAiModel(e.target.value)}
           />
-        </label>
+        </div>
         {aiProvider === "openai-compatible" ? (
           <label className="field">
             <span>Base URL (LM Studio / Ollama)</span>
@@ -297,7 +401,11 @@ export function SetupForm() {
         <label className="field">
           <span>
             API key{" "}
-            {pub?.orsConfigured ? "(saved · leave blank to keep)" : ""}
+            {pub?.orsApiKeyMasked ? (
+              <code className="secret-value__text">{pub.orsApiKeyMasked}</code>
+            ) : (
+              ""
+            )}
           </span>
           <input
             type="password"
