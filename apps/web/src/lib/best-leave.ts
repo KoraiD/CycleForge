@@ -9,6 +9,12 @@ export type HourlyWeather = {
   windKmh: number;
   weatherCode: number;
   summary: string;
+  humidityPct?: number | null;
+  uvIndex?: number | null;
+  visibilityM?: number | null;
+  aqi?: number | null;
+  cloudCoverPct?: number | null;
+  isDay?: boolean;
 };
 
 export type LeaveWindow = LeaveWindowHint;
@@ -39,6 +45,35 @@ function labelTime(iso: string): string {
   });
 }
 
+async function fetchAirQualityHourly(
+  lat: number,
+  lng: number,
+): Promise<Map<number, number>> {
+  // European AQI per ISO local hour — best-effort, never blocks weather fetch.
+  const url = new URL("https://air-quality-api.open-meteo.com/v1/air-quality");
+  url.searchParams.set("latitude", String(lat));
+  url.searchParams.set("longitude", String(lng));
+  url.searchParams.set("hourly", "european_aqi");
+  url.searchParams.set("forecast_days", "2");
+  url.searchParams.set("timezone", "auto");
+  try {
+    const res = await fetchWithTimeout(url.toString(), {}, 8000);
+    if (!res.ok) return new Map();
+    const data = (await res.json()) as {
+      hourly?: { time?: string[]; european_aqi?: Array<number | null> };
+    };
+    const map = new Map<number, number>();
+    data.hourly?.time?.forEach((t, i) => {
+      const v = data.hourly?.european_aqi?.[i];
+      const ts = new Date(t).getTime();
+      if (Number.isFinite(ts) && typeof v === "number") map.set(ts, v);
+    });
+    return map;
+  } catch {
+    return new Map();
+  }
+}
+
 export async function fetchOpenMeteoHourly(
   lat: number,
   lng: number,
@@ -49,15 +84,19 @@ export async function fetchOpenMeteoHourly(
   url.searchParams.set("longitude", String(lng));
   url.searchParams.set(
     "hourly",
-    "temperature_2m,precipitation,wind_speed_10m,weather_code",
+    "temperature_2m,precipitation,wind_speed_10m,weather_code,relative_humidity_2m,uv_index,visibility,cloud_cover,is_day",
   );
   url.searchParams.set("wind_speed_unit", "kmh");
   url.searchParams.set("forecast_days", "2");
   url.searchParams.set("timezone", "auto");
 
   let res: Response;
+  let aqiByHour: Map<number, number>;
   try {
-    res = await fetchWithTimeout(url.toString(), {}, 8000);
+    [res, aqiByHour] = await Promise.all([
+      fetchWithTimeout(url.toString(), {}, 8000),
+      fetchAirQualityHourly(lat, lng),
+    ]);
   } catch {
     return [];
   }
@@ -69,6 +108,11 @@ export async function fetchOpenMeteoHourly(
       precipitation?: number[];
       wind_speed_10m?: number[];
       weather_code?: number[];
+      relative_humidity_2m?: number[];
+      uv_index?: number[];
+      visibility?: number[];
+      cloud_cover?: number[];
+      is_day?: number[];
     };
   };
   const h = data.hourly;
@@ -81,13 +125,20 @@ export async function fetchOpenMeteoHourly(
     const ts = new Date(t).getTime();
     if (!Number.isFinite(ts) || ts < now) continue;
     const code = h.weather_code?.[i] ?? 0;
+    const iso = t.length === 16 ? `${t}:00` : t;
     out.push({
-      time: t.length === 16 ? `${t}:00` : t,
+      time: iso,
       tempC: h.temperature_2m?.[i] ?? 12,
       precipMm: h.precipitation?.[i] ?? 0,
       windKmh: h.wind_speed_10m?.[i] ?? 10,
       weatherCode: code,
       summary: WMO_SUMMARY[code] ?? "Mixed",
+      humidityPct: h.relative_humidity_2m?.[i] ?? null,
+      uvIndex: h.uv_index?.[i] ?? null,
+      visibilityM: h.visibility?.[i] ?? null,
+      aqi: aqiByHour.get(new Date(iso).getTime()) ?? aqiByHour.get(ts) ?? null,
+      cloudCoverPct: h.cloud_cover?.[i] ?? null,
+      isDay: (h.is_day?.[i] ?? 1) === 1,
     });
     if (out.length >= hours) break;
   }
@@ -134,6 +185,13 @@ export function pickBestLeaveWindow(
       windKmh: h.windKmh,
       precipMm: h.precipMm,
       summary: h.summary,
+      weatherCode: h.weatherCode,
+      humidityPct: h.humidityPct,
+      uvIndex: h.uvIndex,
+      visibilityM: h.visibilityM,
+      aqi: h.aqi,
+      cloudCoverPct: h.cloudCoverPct,
+      isDay: h.isDay,
     };
   });
 

@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import type { StackStats } from "@/lib/clickhouse";
+import { StackCharts } from "./stack-charts";
+import { StackDiagram } from "./stack-diagram";
 
 function fmt(n: number | null): string {
   if (n === null || Number.isNaN(n)) return "—";
@@ -94,6 +96,19 @@ export function StackView({ stats: initial }: { stats: StackStats }) {
           </ul>
         </details>
       ) : null}
+
+      <section>
+        <h2>Architecture at a glance</h2>
+        <StackDiagram
+          triggerConfigured={stats.triggerConfigured}
+          clickhouseLive={chLive}
+        />
+      </section>
+
+      <section>
+        <h2>Live charts</h2>
+        <StackCharts stats={stats} />
+      </section>
 
       <section>
         <h2>ClickHouse live table counts</h2>
