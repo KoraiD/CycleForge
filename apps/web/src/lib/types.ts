@@ -118,6 +118,13 @@ export type RouteCandidate = {
   source: "ors" | "fallback" | "seed";
   /** Climb-based effort bands for elevation overlay. */
   effortSegments?: EffortSegment[];
+  /** ORS `extra_info` (waytype) carried from generation when available. */
+  extras?: {
+    waytype?: {
+      values?: Array<[number, number, number]>;
+      summary?: Array<{ value: number; distance: number; amount: number }>;
+    };
+  };
 };
 
 /** Aggregates from rider_history_rides / demo fixture for coaching. */

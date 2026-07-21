@@ -73,6 +73,39 @@ describe("estimateRoadMix", () => {
     const b = estimateRoadMix(makeRoute());
     expect(a.segments).toEqual(b.segments);
   });
+
+  it("does not let a single type dominate the reported mix", () => {
+    const mix = estimateRoadMix(makeRoute());
+    // No single type should swallow >60% after the proportional leftover fix.
+    for (const t of mix.kmByType) {
+      expect(t.pct).toBeLessThanOrEqual(60);
+    }
+  });
+});
+
+describe("mixFromOrs via roadMixForRoute", () => {
+  it("uses ORS waytype extras when present and marks source 'ors'", () => {
+    const route = makeRoute({ source: "ors" });
+    const n = route.geometry.coordinates.length;
+    route.extras = {
+      waytype: {
+        values: [
+          [0, Math.floor(n / 2), 6], // cycleway for first half
+          [Math.floor(n / 2), n - 1, 2], // paved for second half
+        ],
+      },
+    };
+    const mix = roadMixForRoute(route);
+    expect(mix.source).toBe("ors");
+    const types = mix.kmByType.map((t) => t.type);
+    expect(types).toContain("cycleway");
+    expect(types).toContain("paved");
+  });
+
+  it("falls back to estimate when extras are absent", () => {
+    const mix = roadMixForRoute(makeRoute({ source: "ors" }));
+    expect(mix.source).toBe("estimated");
+  });
 });
 
 describe("roadTypeGeometries", () => {
