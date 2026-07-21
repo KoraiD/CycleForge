@@ -8,6 +8,16 @@ You describe the ride you want. The app answers with **three route options on a 
 
 ---
 
+## Why CycleForge
+
+The hackathon's own example was *“should I ride tomorrow?”* That's a fine question — but it's also the **easy** one, and a dozen apps already answer it. The motivation behind it is real, though, and it's something every regular rider knows in their legs: **if you cycle a lot — for training or for fun — the hardest part isn't deciding *whether* to ride. It's planning the *next* ride.**
+
+Where to go. How long. How hard. Which roads. What the weather window looks like. That planning grind is what quietly eats the fun out of the sport.
+
+So I built this open-source project to fix exactly that. **AI agents and great visualizations can turn the planning process into a fun game** — tweak a goal, the map morphs; ask again, the plan iterates. CycleForge **works with any agent** (cloud or fully local) and **runs entirely on your machine**, so it costs nothing to test ideas and refine a cycling plan in real time. And yes — it answers *“should I cycle?”* too, as a rich hourly weather window. It's just that the real answer is everything after *yes*.
+
+---
+
 ## Architecture at a glance
 
 ```
@@ -83,13 +93,13 @@ Optional while generating: a **Trigger fan-out** graphic shows durable ORS + sco
 - Visual chat → wizard → 3-route plan (Amsterdam-biased demo; map/address works elsewhere)
 - Trigger.dev agent + parallel route fetch + score/enrich tasks + weather ingest
 - ClickHouse sessions, routes, SQL ranking, weather grid, athlete history, similar rides
-- Coach note, GPX export, summary page, GPX history upload (no live OAuth)
+- Coach note, GPX export, summary page, GPX history upload (Strava / Garmin / TrainingPeaks export — free, no OAuth)
 - Bring-your-own keys: host locally; paste Trigger, ClickHouse, and AI credentials in **Setup**
 - AI providers: Google AI Studio, OpenAI, Anthropic, or local (Ollama / LM Studio, etc.)
 
 ### Out of scope (intentionally)
 
-- Full Strava / Garmin / TrainingPeaks OAuth product
+- Full Strava / Garmin / TrainingPeaks OAuth product. We evaluated this and it is **not quick or free**: Strava's API now requires a paid subscription for Standard Tier (June 2026 changes), and Garmin / TrainingPeaks require formal partner approval. The **free, already-working** path is one-click GPX export (all three platforms offer it) → **Upload GPX** in the app, which stores your rides in ClickHouse (`rider_history_rides`) and tunes coaching to your history.
 - Multi-day tours, turn-by-turn navigation, live GPS tracking
 - Power-meter physiology or a production SaaS multi-tenant deploy
 - Bundled cloud credentials — **you bring your own**

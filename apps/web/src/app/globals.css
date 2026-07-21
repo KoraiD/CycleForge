@@ -2602,15 +2602,18 @@ a.ghost {
 }
 
 .route-card__drawing {
-  display: block;
+  display: flex;
+  justify-content: center;
   margin: -0.15rem -0.15rem 0.25rem;
 }
 
 .route-mini {
   display: block;
   width: 100%;
+  max-width: 26rem; /* cap growth on ultra-wide screens */
   height: auto;
   aspect-ratio: 2 / 1;
+  margin-inline: auto;
 }
 
 .route-mini__bg {
@@ -2643,6 +2646,9 @@ a.ghost {
 
 .route-mini--empty {
   display: block;
+  width: 100%;
+  max-width: 26rem;
+  margin-inline: auto;
   aspect-ratio: 2 / 1;
   border-radius: 10px;
   border: 1px dashed var(--line);

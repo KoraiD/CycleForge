@@ -97,6 +97,58 @@ Optional: `ingest-weather-grid` (manual or ~6h schedule).
 
 ---
 
+## B5a — Show judges the ClickHouse rows (prove it's real data)
+
+**Goal:** give judges a concrete, copy-paste way to confirm the app is reading from a **live ClickHouse** — not hardcoded fixtures or the in-memory fallback. Do this live in the video *and* leave the steps here so judges can re-run them.
+
+**Why it matters:** the UI always renders (it falls back to an in-memory stand-in when CH is absent), so "the demo works" alone doesn't prove CH is wired up. The fastest proof is to **create a row from the app, then read it back in the CH console / `clickhouse-client`.**
+
+### Step 1 — open the CH console
+
+- **ClickHouse Cloud:** service → **SQL console** (or connect `clickhouse-client` / the MCP ClickHouse tools).
+- **Local Docker:** `docker exec -it <container> clickhouse-client` (see [`clickhouse/README.md`](../clickhouse/README.md)).
+- Not sure of host/user? They're shown (masked) on the in-app **Setup** page.
+
+### Step 2 — confirm the app is using CH (not memory)
+
+- In-app: **`/stack`** page shows **live per-table row counts** queried from CH (not a screenshot).
+- API: **`/api/health`** reports `clickhouse: ok` when configured.
+- If either shows CH missing, the app is on the in-memory path — configure CH first (Setup page).
+
+### Step 3 — generate fresh rows from the app
+
+Run a real flow so rows land in CH:
+
+- **Ask for a plan** (demo prompt) → writes `plan_sessions` + `routes` + `route_scores`.
+- **Upload a GPX** (Strava/Garmin/TrainingPeaks export) → writes `rider_history_rides` under your `upload-<session>` athlete id.
+- **Refresh weather** (`npm run ingest:weather`) → writes `weather_forecast_grid`.
+
+### Step 4 — read the rows back (copy/paste)
+
+```sql
+-- the plan you just generated (note the fresh created_at)
+SELECT session_id, goal_text, created_at
+FROM plan_sessions
+ORDER BY created_at DESC
+LIMIT 3;
+
+-- its scored route candidates, re-ranked by the SQL view
+SELECT route_id, session_id, total_sql, goal_fit, weather_fit, created_at
+FROM route_scores_ranked
+ORDER BY created_at DESC
+LIMIT 6;
+
+-- the GPX you just uploaded (athlete_id = upload-<session prefix>)
+SELECT label, intensity, tss_est, distance_m, started_at
+FROM rider_history_rides
+ORDER BY started_at DESC
+LIMIT 5;
+```
+
+**Sanity trick for the video:** right after generating a plan, run the `plan_sessions` query *before and after* — the row count increments and a new `created_at` appears. That before/after delta is the clearest on-camera proof the data is real.
+
+---
+
 ## B5b — ClickHouse console walkthrough (for the video)
 
 **Goal:** prove meaningful CH usage (pipeline + ranking + athlete history), not just a KV dump.
@@ -162,27 +214,37 @@ Follow [`SECURITY.md`](../SECURITY.md). Checklist:
 
 ## E4 — Demo video script (≤ 5 minutes)
 
+**The story we tell:** the hackathon's own example was *“should I ride tomorrow?”* — and honestly, that's the **easy** question. A dozen apps answer it. But the motivation behind it is real, and it's something every regular rider feels: **if you cycle a lot — for training or for fun — the hardest part isn't deciding whether to ride. It's planning the next ride.** Where to go, how long, how hard, which roads, what the weather window looks like. That planning grind is what kills the fun. So I built this open-source project to fix it: **an AI agent plus rich visualizations turn the planning process into a fun game** — and because it works with *any* agent and runs fully locally, it's easy to test ideas and iterate on a cycling plan in real time.
+
 **Theme alignment:** Beyond the Wall of Text — show the **visual plan** first; Trigger + ClickHouse prove the stack. Match the **shipped MVP** (see README “Demo features”), not backlog ideas.
 
 Record **1080p**. Start on the product UI, not slides. Prefer **agent mode** (health all green) when showing Trigger.
 
 | Time | On screen | Say (approx.) |
 | --- | --- | --- |
-| **0:00–0:15** | Logo + empty home | “CycleForge — chat a training goal, get a visual plan, not a wall of text. Built for the ClickHouse × Trigger.dev hackathon.” |
-| **0:15–0:35** | Load demo athlete → history chip / TSS calendar hint | “We load a fixture athlete into ClickHouse — three weeks of rides for coaching. No OAuth wall for the demo; GPX upload exists if you want your own files.” |
-| **0:35–0:55** | Wizard: map/address start (brief) | “Start from a map pin or address — then we generate three candidates from there.” |
-| **0:55–1:25** | Demo prompt → generating (fan-out graphic if visible) → Plan Panel | “One prompt. A durable Trigger agent fans out route fetches and scores them. The answer is the map.” |
-| **1:25–2:05** | Click routes · elevation sync · wind tint · radar · score explain | “Interactive plan: select candidates, elevation stays in sync, wind bands on the map, radar compare, and explain-this-score tied to our ClickHouse ranking weights.” |
-| **2:05–2:30** | Commute verdict scrubber + coach note | “Should I cycle? Hourly weather windows. Short coach note grounded in weather and recent load — not a essay.” |
-| **2:30–2:50** | Shorter / regenerate (optional morph) · GPX · summary | “Tune without leaving the view. Export GPX. Open a shareable summary.” |
-| **2:50–3:35** | Trigger dashboard run tree | “Here’s the durable tree: agent → ORS fan-out ×3 → score-and-enrich. That’s Trigger doing real orchestration.” |
-| **3:35–4:25** | ClickHouse: weather → `route_scores_ranked` → athlete rides | “ClickHouse isn’t a dump — weather pipeline, SQL re-ranking, athlete history the coach note used.” |
-| **4:25–4:45** | Stack page (optional) or architecture one-liner | “Stack page shows live table counts. Insight-to-words: the map and the next workout *are* the answer.” |
-| **4:45–5:00** | End card: logo + repo URL | “CycleForge — MIT — bring your own keys, run locally. Link in the description.” |
+| **0:00–0:20** | Logo + empty home | “The hackathon's example was *‘should I ride tomorrow?’* — but that's the easy question; plenty of tools answer it. If you ride a lot, the hard part is **planning the next ride**. So I built CycleForge: an open-source planner where an AI agent + great visuals turn planning into a fun game.” |
+| **0:20–0:40** | Load demo athlete → history chip / TSS calendar | “It knows my training. We load a fixture athlete into ClickHouse — three weeks of rides — so coaching is grounded in my recent load. No OAuth wall for the demo; GPX upload (from Strava, Garmin, or TrainingPeaks) works if you want your own files.” |
+| **0:40–0:55** | Wizard: map/address start (brief) | “Start from a map pin or address — then we generate three candidates from there.” |
+| **0:55–1:25** | Demo prompt → generating → Plan Panel | “One prompt. A durable Trigger agent fans out route fetches and scores them. And it works with *any* agent — even a fully local model — so I can iterate on a plan in real time. The answer is the map, not a paragraph.” |
+| **1:25–2:05** | Click routes · elevation sync · wind tint · radar · score explain | “Interactive plan: select candidates, elevation stays in sync, wind bands on the map, road-type mix, radar compare, and explain-this-score tied to our ClickHouse ranking weights.” |
+| **2:05–2:30** | Commute verdict scrubber + coach note | “*Should I cycle?* — yes, we answer that too, as an hourly weather window: temp, wind, rain, sun, humidity, UV, visibility, air quality. Plus a short coach note grounded in weather and my load.” |
+| **2:30–2:50** | Shorter / regenerate · GPX · summary | “Tune without leaving the view. Export GPX. Open a shareable summary.” |
+| **2:50–3:35** | Trigger dashboard run tree | “Here's the durable tree: agent → ORS fan-out ×3 → score-and-enrich. That's Trigger doing real orchestration.” |
+| **3:35–4:25** | ClickHouse console: run the §B5a before/after query | “And this is a live ClickHouse, not a fixture. I just generated that plan — watch the row appear: weather pipeline, SQL re-ranking, athlete history the coach note used. The counts go up as I use the app.” |
+| **4:25–4:45** | Stack page (live counts) or architecture one-liner | “The Stack page shows live table counts. Insight-to-words: the map and the next workout *are* the answer.” |
+| **4:45–5:00** | End card: logo + repo URL | “CycleForge — open source, MIT — bring your own keys, run it locally with any agent. Link in the description.” |
+
+### Speaker notes (the through-line)
+
+- **Open on the problem, not the product.** One line: “*Should I ride tomorrow?* is easy — planning the next ride is the hard part.” That's the hook and the whole motivation. Land it before you show any UI.
+- **Position the two tools honestly.** “The hackathon example asked *should I ride tomorrow*. We answer that too (the hourly weather window) — but the real value is everything after *yes*: where, how long, how hard.”
+- **“Fun game” beat.** When the plan appears, say the planning feels like a game now — tweak a chip, the map morphs; ask again, it iterates in real time. Emphasize it's **agent-agnostic** and **runs locally**, so experimenting costs nothing.
+- **Prove the stack is real, don't just claim it.** The ClickHouse before/after row-count moment (§B5a) is your receipts — say “watch the count go up,” then run it.
+- **Close on open source.** Free, MIT, BYOK, runs on your machine, works with any agent — invite people to clone it and plan their own ride.
 
 ### If you are short on time (cut order)
 
-Keep: prompt → plan → Trigger tree → ClickHouse SQL → end card.  
+Keep: hook (planning is the hard part) → prompt → plan → Trigger tree → ClickHouse before/after → end card.
 Cut first: Stack page, score-explain deep dive, regenerate morph.
 
 ### Recording tips
@@ -214,7 +276,7 @@ Durable `cycleforge-agent` (`chat.agent`) orchestrates planning tools. Child tas
 Feature store + analytics for the planner: `plan_sessions`, `routes`, `route_scores`, SQL view `route_scores_ranked` (recomputes weighted totals), open-data `weather_forecast_grid` (nearest-tile join with Open-Meteo fallback), `rider_history_rides` for the demo athlete (and GPX uploads), similar-ride lookups over a seed corpus, plus optional `training_blocks`. The UI surfaces CH-backed weather, history aggregates, score explain, and a Stack page with live counts.
 
 **Problem / insight-to-words:**  
-Training chat usually dumps paragraphs. CycleForge answers with an interactive wizard, map candidates, elevation, training effect, leave-window guidance, coach note, GPX export, and a printable summary — the visual plan *is* the response.
+The hackathon's example was *“should I ride tomorrow?”* — but that's the easy question, and plenty of tools answer it. For anyone who rides regularly, the hard part is **planning the next ride**: where, how long, how hard, which roads, which weather window. CycleForge makes that planning feel like a game. An AI agent (any agent — even a fully local model) answers with an interactive wizard, map candidates, elevation, training effect, leave-window guidance, a coach note, GPX export, and a printable summary — the visual plan *is* the response. And because it runs locally with your own keys, you can test ideas and iterate on a plan in real time.
 
 **Tech stack:**  
 Next.js 16, Trigger.dev 4.5, ClickHouse, BYOK AI (Google AI Studio / OpenAI / Anthropic / local OpenAI-compatible), MapLibre, OpenRouteService, Open-Meteo.
