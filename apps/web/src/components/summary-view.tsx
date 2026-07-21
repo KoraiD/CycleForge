@@ -11,6 +11,7 @@ import { CommuteVerdict } from "./commute-verdict";
 import { ElevationChart } from "./elevation-chart";
 import { HistoryChart } from "./history-chart";
 import { RouteMap } from "./route-map";
+import { RoutePrintMap } from "./route-print-map";
 import { RouteRadar } from "./route-radar";
 import { ScoreChart } from "./score-chart";
 import { ScoreExplainDrawer } from "./score-explain";
@@ -166,19 +167,28 @@ export function SummaryView({
         </div>
 
         <section className="summary-map-block">
-          <RouteMap
-            routes={plan.routes}
-            selectedRouteId={selected.routeId}
-            onSelect={(id) => {
-              setSelectedId(id);
-              setHoverKm(null);
-              setPreviewRouteId(null);
-            }}
-            hoverKm={hoverKm}
-            onHoverKm={setHoverKm}
-            previewRouteId={previewRouteId}
-            onPreviewRoute={setPreviewRouteId}
-          />
+          <div className="no-print">
+            <RouteMap
+              routes={plan.routes}
+              selectedRouteId={selected.routeId}
+              onSelect={(id) => {
+                setSelectedId(id);
+                setHoverKm(null);
+                setPreviewRouteId(null);
+              }}
+              hoverKm={hoverKm}
+              onHoverKm={setHoverKm}
+              previewRouteId={previewRouteId}
+              onPreviewRoute={setPreviewRouteId}
+            />
+          </div>
+          <div className="print-only summary-map-print" aria-hidden={false}>
+            <RoutePrintMap geometry={selected.geometry} color={accent} />
+            <p className="summary-map-print__caption">
+              Route outline · {(selected.distanceM / 1000).toFixed(1)} km ·{" "}
+              {Math.round(selected.elevGainM)} m gain
+            </p>
+          </div>
         </section>
 
         {plan.historyContext ? (
