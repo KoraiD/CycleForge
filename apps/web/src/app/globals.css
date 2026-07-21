@@ -1365,6 +1365,57 @@ a.primary {
   height: min(48vh, 440px);
 }
 
+/* Static SVG route shown only when printing (WebGL map can't rasterize). */
+.summary-map-print {
+  display: none;
+}
+
+.route-print-map {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 720 / 300;
+}
+
+.route-print-map__bg {
+  fill: #f4f7f2;
+  stroke: #d4dcd2;
+  stroke-width: 1;
+}
+
+.route-print-map__line {
+  fill: none;
+  stroke-width: 4.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.route-print-map__dot--start {
+  fill: #2c7a4b;
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.route-print-map__dot--end {
+  fill: #1c211c;
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.route-print-map__marker {
+  fill: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-display);
+}
+
+.route-print-map__caption {
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+  color: #5a6357;
+  text-align: center;
+}
+
 .summary-sheet h2 {
   font-family: var(--font-display);
   font-size: 1.15rem;
@@ -1431,6 +1482,10 @@ a.ghost {
 }
 
 @media print {
+  @page {
+    margin: 14mm 12mm;
+  }
+
   body {
     background: white;
   }
@@ -1453,17 +1508,86 @@ a.ghost {
     border-radius: 0;
     max-width: none;
     padding: 0;
+    gap: 0.9rem;
   }
 
+  /* The WebGL map canvas does not rasterize into PDF; swap it for a static
+     SVG route outline (rendered print-only) so the route is visible. */
   .summary-map-block .route-map {
-    height: 320px;
+    display: none !important;
+  }
+
+  .summary-map-print {
+    display: block;
     break-inside: avoid;
   }
 
+  /* Stack every two-column grid so nothing overlaps when rows reflow. */
+  .plan-grid,
+  .summary-kpis {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  /* Recharts measures against its parent; give charts a concrete height in
+     print so the elevation area can't collapse onto the training-effect block. */
+  .elevation-chart {
+    height: 200px !important;
+    min-height: 200px;
+  }
+
+  .elevation-chart .recharts-responsive-container,
+  .elevation-chart .recharts-wrapper {
+    height: 200px !important;
+  }
+
+  .score-chart .recharts-responsive-container {
+    height: 150px !important;
+  }
+
+  .history-chart .recharts-responsive-container {
+    height: 160px !important;
+  }
+
+  .route-radar .recharts-responsive-container {
+    height: 260px !important;
+  }
+
+  /* Keep each logical block on one page; only break between blocks. */
   .coach-note,
   .plan-grid,
-  .kpi-strip {
+  .kpi-strip,
+  .commute-verdict,
+  .route-radar,
+  .history-banner,
+  .plan-meta,
+  section,
+  .comparison-graphic,
+  .tss-calendar,
+  .history-chart,
+  .score-chart,
+  .elevation-chart,
+  .training-block {
     break-inside: avoid;
+  }
+
+  .summary-sheet h2 {
+    break-after: avoid;
+  }
+
+  /* The hourly scrubber is a range input — useless on paper. Show the strip
+     but drop the slider control. */
+  .commute-verdict__scrub {
+    display: none;
+  }
+
+  .wx-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  /* Links shouldn't show the print URL affordance. */
+  a {
+    text-decoration: none;
+    color: inherit;
   }
 }
 
