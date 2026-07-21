@@ -16,6 +16,7 @@ import {
   upsertTrainingBlock,
 } from "@/lib/clickhouse";
 import { attachCoachNote } from "@/lib/coach-note";
+import { withTimeoutOrThrow } from "@/lib/fetch-timeout";
 import { parseGpxRide } from "@/lib/parse-gpx";
 import { parseGoalPrompt } from "@/lib/parse-goal";
 import { buildPlan, mergeWizard } from "@/lib/plan-builder";
@@ -69,6 +70,13 @@ export async function mintChatAccessToken(chatId: string) {
 }
 
 /**
+ * How long to wait for the Trigger live-plan run before falling back to the
+ * in-process ORS path. Must stay under the client's PLAN_BUILD_CLIENT_MS (60s)
+ * so the local fallback still completes inside that window.
+ */
+const TRIGGER_POLL_MS = 40_000;
+
+/**
  * Build a live plan: prefer Trigger ORS fan-out + score tasks (the real pipeline).
  * Falls back to in-process ORS only when Trigger is unavailable or fails.
  */
@@ -96,7 +104,14 @@ export async function generateDemoPlan(
       const handle = await buildLivePlanTask.trigger({
         wizard: toTaskWizard(wizard),
       });
-      const run = await runs.poll(handle, { pollIntervalMs: 900 });
+      // Cap the poll: with no local Trigger worker the run never completes and
+      // would block for minutes (until the cloud cancels it) — long past the
+      // client's 60s timeout. Bail to the in-process fallback well before that.
+      const run = await withTimeoutOrThrow(
+        runs.poll(handle, { pollIntervalMs: 900 }),
+        TRIGGER_POLL_MS,
+        `build-live-plan did not finish within ${TRIGGER_POLL_MS / 1000}s`,
+      );
       if (!run.isSuccess || !run.output) {
         throw new Error(
           `build-live-plan ended with status ${run.status ?? "unknown"}`,

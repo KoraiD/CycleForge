@@ -282,14 +282,18 @@ export function SetupForm() {
           onChange={setClickhouseUser}
           savedValue={pub?.clickhouseUser ?? ""}
         />
-        <SetupField
-          label="Password"
-          value={clickhousePassword}
-          onChange={setClickhousePassword}
-          savedValue={pub?.clickhousePasswordSet ? "••••••••" : ""}
-          placeholder={pub?.clickhousePasswordSet ? "saved · type to replace" : ""}
-          secret
-        />
+        <label className="field">
+          <span>
+            Password{" "}
+            {pub?.clickhousePasswordSet ? "(saved · type to replace)" : ""}
+          </span>
+          <input
+            type="password"
+            autoComplete="off"
+            value={clickhousePassword}
+            onChange={(e) => setClickhousePassword(e.target.value)}
+          />
+        </label>
         <SetupField
           label="Database"
           value={clickhouseDatabase}
