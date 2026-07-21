@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest an idea or improvement
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Who is it for and why does it matter?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: Describe the change. Remember CycleForge is visual-first —
+        how would this render as an interactive component rather than text?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: visual
+    attributes:
+      label: Fit check
+      options:
+        - label: This keeps the "Beyond the Wall of Text" (visual, interactive) spirit
+        - label: This can use ClickHouse and/or Trigger.dev meaningfully

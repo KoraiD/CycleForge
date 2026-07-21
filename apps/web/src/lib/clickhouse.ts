@@ -450,6 +450,13 @@ export type StackStats = {
   };
   samples: {
     recentSessions: Array<{ sessionId: string; status: string; goals: string }>;
+    /** Last N generated plan sessions → shareable summary URLs. */
+    summaryUrls: Array<{
+      sessionId: string;
+      createdAt: string;
+      goals: string;
+      status: string;
+    }>;
     topScores: Array<{ routeId: string; label: string; total: number }>;
     weatherSample: Array<{
       tileId: string;
@@ -561,6 +568,7 @@ export async function queryStackStats(): Promise<StackStats> {
     },
     samples: {
       recentSessions: [],
+      summaryUrls: [],
       topScores: [],
       weatherSample: [],
       athleteLoads: [],
@@ -630,6 +638,15 @@ export async function queryStackStats(): Promise<StackStats> {
         sessionId: w.sessionId.slice(0, 8),
         status: w.confirmed ? "confirmed" : "draft",
         goals: w.goalsText.slice(0, 80) || "(wizard only)",
+      }));
+    empty.samples.summaryUrls = [...memorySessions.values()]
+      .slice(-20)
+      .reverse()
+      .map((w) => ({
+        sessionId: w.sessionId,
+        createdAt: "",
+        goals: w.goalsText.slice(0, 60) || "(wizard only)",
+        status: w.confirmed ? "confirmed" : "draft",
       }));
     empty.samples.athleteLoads = [...memoryAthleteRides.entries()].map(
       ([athleteId, rides]) => ({
@@ -717,6 +734,27 @@ export async function queryStackStats(): Promise<StackStats> {
         format: "JSONEachRow",
       });
       return (await sessions.json()) as StackStats["samples"]["recentSessions"];
+    },
+    [],
+  );
+
+  empty.samples.summaryUrls = await soft(
+    "summaryUrls",
+    async () => {
+      const rows = await ch.query({
+        query: `
+          SELECT
+            session_id AS sessionId,
+            formatDateTime(created_at, '%Y-%m-%d %H:%i') AS createdAt,
+            substring(goals_text, 1, 60) AS goals,
+            status
+          FROM plan_sessions
+          ORDER BY created_at DESC
+          LIMIT 20
+        `,
+        format: "JSONEachRow",
+      });
+      return (await rows.json()) as StackStats["samples"]["summaryUrls"];
     },
     [],
   );

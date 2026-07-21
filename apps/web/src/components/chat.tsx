@@ -355,6 +355,8 @@ export function Chat() {
     !wizardDirty && extracted.wizard ? extracted.wizard : localWizard;
 
   const busy = localBusy || selectingRoute;
+  /** Any async render/work in flight — drives the persistent in-app indicator. */
+  const rendering = localBusy || selectingRoute || agentBusy;
   const agentTransportError = error
     ? friendlyErrorMessage(
         error,
@@ -517,22 +519,6 @@ Call upsert_wizard_state with these fields, then generate_route_candidates with 
       { ...wizard, ...patch, confirmed: true },
       agentPrompt,
     );
-  };
-
-  const onRefine = (kind: "shorter" | "hillier" | "easier") => {
-    const patch: Partial<WizardState> =
-      kind === "shorter"
-        ? { durationMin: Math.max(30, wizard.durationMin - 20) }
-        : kind === "hillier"
-          ? { terrainBias: "hilly", intensity: "hills" }
-          : { intensity: "easy", terrainBias: "flat" };
-    const prompt =
-      kind === "shorter"
-        ? "Make it shorter — about 20 minutes less."
-        : kind === "hillier"
-          ? "Make it hillier — more climbing."
-          : "Make it easier — flatter and recovery pace.";
-    regenerateWithPatch(patch, prompt);
   };
 
   const onApplyTweaks = (tweak: PlanTweak) => {
@@ -702,6 +688,17 @@ Call upsert_wizard_state with these fields, then generate_route_candidates with 
             <p className="tagline">Visual training plans — not walls of text</p>
           </div>
           <nav className="chat-nav" aria-label="App">
+            {rendering ? (
+              <span
+                className="render-indicator"
+                role="status"
+                aria-live="polite"
+                title="CycleForge is rendering your plan"
+              >
+                <span className="render-indicator__spinner" aria-hidden />
+                <span className="render-indicator__label">Rendering…</span>
+              </span>
+            ) : null}
             <button
               type="button"
               className="ghost chat-nav__btn"
@@ -916,7 +913,6 @@ Call upsert_wizard_state with these fields, then generate_route_candidates with 
               key={`${plan.sessionId}-${plan.routes.map((r) => r.routeId).join("-")}-${plan.historyContext?.athleteId ?? "none"}`}
               plan={plan}
               onSelectRoute={onSelectRoute}
-              onRefine={onRefine}
               onApplyTweaks={onApplyTweaks}
               refining={false}
               selectingRoute={selectingRoute}

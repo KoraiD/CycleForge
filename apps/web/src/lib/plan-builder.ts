@@ -97,6 +97,7 @@ export async function buildPlan(wizard: WizardState): Promise<PlanPayload> {
       similarRideLabels: similarLabels[i] ?? [],
       source: raw.source,
       effortSegments: buildEffortSegments(raw.elevProfile),
+      extras: raw.extras,
     };
   });
 

@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import type { NearbyStart } from "@/lib/nearby-starts";
 import type { GeocodeHit } from "@/lib/geocode";
 import type { Intensity, TerrainBias, WizardState } from "@/lib/types";
+import { DurationField } from "./duration-field";
+import { INTENSITY_META, TERRAIN_META } from "./icon";
 import { StartPickerMap } from "./start-picker-map";
 
 const INTENSITIES: Intensity[] = ["easy", "endurance", "tempo", "hills"];
@@ -149,18 +151,11 @@ export function Wizard({
         ) : null}
       </header>
 
-      <label className="field">
-        <span>Duration (min)</span>
-        <input
-          type="range"
-          min={45}
-          max={210}
-          step={15}
-          value={wizard.durationMin}
-          onChange={(e) => onChange({ durationMin: Number(e.target.value) })}
-        />
-        <strong>{wizard.durationMin} min</strong>
-      </label>
+      <DurationField
+        durationMin={wizard.durationMin}
+        intensity={wizard.intensity}
+        onChange={(durationMin) => onChange({ durationMin })}
+      />
 
       <label className="field">
         <span>FTP (watts) — optional, improves TSS</span>
@@ -185,32 +180,50 @@ export function Wizard({
         />
       </label>
 
-      <div className="chip-row">
+      <div className="chip-row chip-row--visual">
         <span className="chip-label">Intensity</span>
-        {INTENSITIES.map((value) => (
-          <button
-            key={value}
-            type="button"
-            className={wizard.intensity === value ? "chip active" : "chip"}
-            onClick={() => onChange({ intensity: value })}
-          >
-            {value}
-          </button>
-        ))}
+        {INTENSITIES.map((value) => {
+          const { Icon, blurb } = INTENSITY_META[value];
+          return (
+            <button
+              key={value}
+              type="button"
+              className={
+                wizard.intensity === value ? "chip chip--icon active" : "chip chip--icon"
+              }
+              onClick={() => onChange({ intensity: value })}
+            >
+              <Icon size={20} className="chip__icon" />
+              <span className="chip__text">
+                <strong>{value}</strong>
+                <small>{blurb}</small>
+              </span>
+            </button>
+          );
+        })}
       </div>
 
-      <div className="chip-row">
+      <div className="chip-row chip-row--visual">
         <span className="chip-label">Terrain</span>
-        {TERRAINS.map((value) => (
-          <button
-            key={value}
-            type="button"
-            className={wizard.terrainBias === value ? "chip active" : "chip"}
-            onClick={() => onChange({ terrainBias: value })}
-          >
-            {value}
-          </button>
-        ))}
+        {TERRAINS.map((value) => {
+          const { Icon, blurb } = TERRAIN_META[value];
+          return (
+            <button
+              key={value}
+              type="button"
+              className={
+                wizard.terrainBias === value ? "chip chip--icon active" : "chip chip--icon"
+              }
+              onClick={() => onChange({ terrainBias: value })}
+            >
+              <Icon size={20} className="chip__icon" />
+              <span className="chip__text">
+                <strong>{value}</strong>
+                <small>{blurb}</small>
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       <div className="chip-row">

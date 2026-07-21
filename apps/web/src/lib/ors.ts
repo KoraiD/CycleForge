@@ -18,6 +18,12 @@ type OrsFeature = {
   geometry?: { type: string; coordinates?: number[][] };
   properties?: {
     summary?: { distance?: number; duration?: number };
+    extras?: {
+      waytype?: {
+        values?: Array<[number, number, number]>;
+        summary?: Array<{ value: number; distance: number; amount: number }>;
+      };
+    };
   };
 };
 
@@ -108,6 +114,9 @@ export async function fetchOrsVariant(
       elevProfile: buildElevProfile(coords),
       busyPenalty: busyByProfile[variant.profile] ?? (wizard.avoidBusyRoads ? 0.12 : 0.28),
       source: "ors",
+      extras: feature?.properties?.extras?.waytype
+        ? { waytype: feature.properties.extras.waytype }
+        : undefined,
     };
   } catch (err) {
     console.warn("ORS fetch failed", err);

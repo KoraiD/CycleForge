@@ -126,8 +126,6 @@ Demo prompt:
 
 > I have 90 minutes tomorrow morning near Amsterdam — endurance ride, some hills if possible, avoid busy roads.
 
-Submit / video checklist: **[SUBMIT.md](SUBMIT.md)**.
-
 ---
 
 ## 6. Tests & quality gates
@@ -152,7 +150,7 @@ CI runs the same checks on PRs to `main` (see `.github/workflows/ci.yml`).
 
 ---
 
-## 7. ClickHouse queries (for demo / video)
+## 7. ClickHouse queries (for the demo)
 
 Open the ClickHouse Cloud SQL console (or any CH client) against the same service as `.env.local`.
 
@@ -239,8 +237,6 @@ cycleforge-agent
 
 The three `fetch-ors-route` children are launched with `batchTriggerAndWait` (parallel fan-out).
 
-Full narration + ClickHouse SQL for the video: **[SUBMIT.md](SUBMIT.md)** (§B5 / B5b).
-
 ### Deploy to Trigger Cloud (optional backup)
 
 ```bash
@@ -249,7 +245,7 @@ npm run deploy:trigger:dry   # preview
 npm run deploy:trigger       # prod deploy (requires login + env vars in dashboard)
 ```
 
-Set the same `GOOGLE_*`, `CLICKHOUSE_*`, and `ORS_API_KEY` values in the Trigger project environment. Details: [`SUBMIT.md`](SUBMIT.md) §B1.
+Set the same `GOOGLE_*`, `CLICKHOUSE_*`, and `ORS_API_KEY` values in the Trigger project environment.
 
 ---
 

@@ -14,7 +14,11 @@ import type {
 import type { TrainingBlockPlan } from "@/lib/training-block-plan";
 import { CommuteVerdict } from "./commute-verdict";
 import { ElevationChart } from "./elevation-chart";
+import { INTENSITY_META, TERRAIN_META } from "./icon";
+import { RouteMiniMap } from "./route-mini-map";
+import { RoadTypeStrip } from "./road-type-strip";
 import { HistoryChart } from "./history-chart";
+import { DurationField } from "./duration-field";
 import { RouteMap } from "./route-map";
 import { RouteRadar } from "./route-radar";
 import { ScoreChart } from "./score-chart";
@@ -43,7 +47,6 @@ export type PlanTweak = Partial<
 export function PlanPanel({
   plan,
   onSelectRoute,
-  onRefine,
   onApplyTweaks,
   refining,
   selectingRoute,
@@ -54,7 +57,6 @@ export function PlanPanel({
 }: {
   plan: PlanPayload;
   onSelectRoute?: (routeId: string) => void;
-  onRefine?: (kind: "shorter" | "hillier" | "easier") => void;
   onApplyTweaks?: (tweak: PlanTweak) => void;
   refining?: boolean;
   selectingRoute?: boolean;
@@ -206,78 +208,57 @@ export function PlanPanel({
       <div className="tweak-panel">
         <div className="tweak-panel__head">
           <p className="eyebrow">Tune this result</p>
-          {onRefine && (
-            <div className="refine-chips" aria-label="Quick refine">
-              <button
-                type="button"
-                className="chip"
-                disabled={panelBusy}
-                onClick={() => onRefine("shorter")}
-              >
-                Shorter
-              </button>
-              <button
-                type="button"
-                className="chip"
-                disabled={panelBusy}
-                onClick={() => onRefine("hillier")}
-              >
-                Hillier
-              </button>
-              <button
-                type="button"
-                className="chip"
-                disabled={panelBusy}
-                onClick={() => onRefine("easier")}
-              >
-                Easier
-              </button>
-            </div>
-          )}
         </div>
 
-        <label className="field">
-          <span>Duration (min)</span>
-          <input
-            type="range"
-            min={45}
-            max={210}
-            step={15}
-            value={draftDuration}
-            disabled={panelBusy}
-            onChange={(e) => setDraftDuration(Number(e.target.value))}
-          />
-          <strong>{draftDuration} min</strong>
-        </label>
+        <DurationField
+          durationMin={draftDuration}
+          intensity={draftIntensity}
+          disabled={panelBusy}
+          onChange={setDraftDuration}
+        />
 
-        <div className="chip-row">
+        <div className="chip-row chip-row--visual">
           <span className="chip-label">Intensity</span>
-          {INTENSITIES.map((value) => (
-            <button
-              key={value}
-              type="button"
-              disabled={panelBusy}
-              className={draftIntensity === value ? "chip active" : "chip"}
-              onClick={() => setDraftIntensity(value)}
-            >
-              {value}
-            </button>
-          ))}
+          {INTENSITIES.map((value) => {
+            const { Icon, blurb } = INTENSITY_META[value];
+            return (
+              <button
+                key={value}
+                type="button"
+                disabled={panelBusy}
+                className={draftIntensity === value ? "chip chip--icon active" : "chip chip--icon"}
+                onClick={() => setDraftIntensity(value)}
+              >
+                <Icon size={20} className="chip__icon" />
+                <span className="chip__text">
+                  <strong>{value}</strong>
+                  <small>{blurb}</small>
+                </span>
+              </button>
+            );
+          })}
         </div>
 
-        <div className="chip-row">
+        <div className="chip-row chip-row--visual">
           <span className="chip-label">Terrain</span>
-          {TERRAINS.map((value) => (
-            <button
-              key={value}
-              type="button"
-              disabled={panelBusy}
-              className={draftTerrain === value ? "chip active" : "chip"}
-              onClick={() => setDraftTerrain(value)}
-            >
-              {value}
-            </button>
-          ))}
+          {TERRAINS.map((value) => {
+            const { Icon, blurb } = TERRAIN_META[value];
+            return (
+              <button
+                key={value}
+                type="button"
+                disabled={panelBusy}
+                className={draftTerrain === value ? "chip chip--icon active" : "chip chip--icon"}
+                onClick={() => setDraftTerrain(value)}
+              >
+                <Icon size={20} className="chip__icon" />
+                <span className="chip__text">
+                  <strong>{value}</strong>
+                  <small>{blurb}</small>
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         <label className="check">
@@ -310,6 +291,8 @@ export function PlanPanel({
         onPreviewRoute={setPreviewRouteId}
         morphFrom={morphFrom}
       />
+
+      <RoadTypeStrip route={selected} accent={accent} />
 
       <RouteRadar
         routes={plan.routes}
@@ -348,6 +331,13 @@ export function PlanPanel({
                       ROUTE_COLORS[index % ROUTE_COLORS.length],
                   }}
                 >
+              <span className="route-card__drawing" aria-hidden>
+                <RouteMiniMap
+                  geometry={route.geometry}
+                  color={ROUTE_COLORS[index % ROUTE_COLORS.length]}
+                  active={active}
+                />
+              </span>
               <span className="route-card__title">{route.label}</span>
               <span className="route-card__meta">
                 {(route.distanceM / 1000).toFixed(1)} km ·{" "}

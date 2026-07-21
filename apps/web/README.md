@@ -7,7 +7,6 @@ Next.js UI + Trigger.dev tasks for CycleForge.
 | Doc | Purpose |
 | --- | --- |
 | [docs/RUN.md](../../docs/RUN.md) | Technical runbook, SQL, health |
-| [docs/SUBMIT.md](../../docs/SUBMIT.md) | Video script + submit form |
 | [SECURITY.md](../../SECURITY.md) | Secrets / public-repo rules |
 
 ```bash

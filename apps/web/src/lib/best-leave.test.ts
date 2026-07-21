@@ -40,6 +40,33 @@ describe("pickBestLeaveWindow", () => {
     expect(bestHour?.verdict).toBe("go");
   });
 
+  it("carries extended hourly metrics through to scored hours", () => {
+    const hours: HourlyWeather[] = [
+      {
+        time: "2026-07-21T09:00:00",
+        tempC: 17,
+        precipMm: 0,
+        windKmh: 10,
+        weatherCode: 1,
+        summary: "Mainly clear",
+        humidityPct: 62,
+        uvIndex: 3.4,
+        visibilityM: 18000,
+        aqi: 28,
+        cloudCoverPct: 20,
+        isDay: true,
+      },
+    ];
+    const win = pickBestLeaveWindow(hours, 60);
+    const hour = win?.hours?.[0];
+    expect(hour?.humidityPct).toBe(62);
+    expect(hour?.uvIndex).toBeCloseTo(3.4);
+    expect(hour?.visibilityM).toBe(18000);
+    expect(hour?.aqi).toBe(28);
+    expect(hour?.cloudCoverPct).toBe(20);
+    expect(hour?.isDay).toBe(true);
+  });
+
   it("returns null for empty hourly series", () => {
     expect(pickBestLeaveWindow([], 60)).toBeNull();
   });

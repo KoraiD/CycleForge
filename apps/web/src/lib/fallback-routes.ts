@@ -22,6 +22,15 @@ export type RawRoute = {
   elevProfile: ReturnType<typeof buildElevProfile>;
   busyPenalty: number;
   source: "ors" | "fallback";
+  /** ORS `extra_info` payloads (e.g. waytype) when available. */
+  extras?: RawRouteExtras;
+};
+
+export type RawRouteExtras = {
+  waytype?: {
+    values?: Array<[number, number, number]>;
+    summary?: Array<{ value: number; distance: number; amount: number }>;
+  };
 };
 
 type GoldenFile = {

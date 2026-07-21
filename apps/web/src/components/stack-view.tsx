@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import type { StackStats } from "@/lib/clickhouse";
+import { StackCharts } from "./stack-charts";
+import { StackDiagram } from "./stack-diagram";
 
 function fmt(n: number | null): string {
   if (n === null || Number.isNaN(n)) return "—";
@@ -40,7 +42,7 @@ export function StackView({ stats: initial }: { stats: StackStats }) {
 
   return (
     <main className="stack-sheet">
-      <p className="eyebrow">Hackathon stack</p>
+      <p className="eyebrow">Under the hood</p>
       <h1 className="stack-title">Trigger.dev × ClickHouse</h1>
       <p className="stack-lede">
         Durable Trigger tasks fan out ORS and weather ingest; ClickHouse stores
@@ -94,6 +96,19 @@ export function StackView({ stats: initial }: { stats: StackStats }) {
           </ul>
         </details>
       ) : null}
+
+      <section>
+        <h2>Architecture at a glance</h2>
+        <StackDiagram
+          triggerConfigured={stats.triggerConfigured}
+          clickhouseLive={chLive}
+        />
+      </section>
+
+      <section>
+        <h2>Live charts</h2>
+        <StackCharts stats={stats} />
+      </section>
 
       <section>
         <h2>ClickHouse live table counts</h2>
@@ -224,6 +239,34 @@ export function StackView({ stats: initial }: { stats: StackStats }) {
             </ul>
           )}
         </div>
+      </section>
+
+      <section>
+        <h2>Latest summary links</h2>
+        {stats.samples.summaryUrls.length === 0 ? (
+          <p className="muted">
+            No plans yet — generate a plan and its shareable summary URL will
+            appear here.
+          </p>
+        ) : (
+          <ul className="stack-list stack-summaries">
+            {stats.samples.summaryUrls.map((s, i) => (
+              <li key={`${s.sessionId}-${i}`}>
+                <a
+                  href={`/summary/${s.sessionId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="stack-summaries__link"
+                >
+                  /summary/{s.sessionId.slice(0, 8)}…
+                </a>
+                <span className="stack-badge">{s.status}</span>
+                {s.createdAt ? <span>{s.createdAt}</span> : null}
+                <span className="stack-summaries__goals">{s.goals || "—"}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className="stack-grid">

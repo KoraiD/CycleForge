@@ -7,19 +7,20 @@ import { BrandMark } from "./brand-mark";
 
 type PublicConfig = {
   triggerConfigured: boolean;
+  triggerSecretKey: string;
   triggerProjectRef: string;
   clickhouseConfigured: boolean;
-  clickhouseUrlHost: string;
+  clickhouseUrl: string;
   clickhouseUser: string;
+  clickhousePasswordSet: boolean;
   clickhouseDatabase: string;
   orsConfigured: boolean;
+  orsApiKey: string;
   aiProvider: AiProvider;
   aiModel: string;
+  aiApiKey: string;
   aiBaseUrl: string;
   aiConfigured: boolean;
-  aiApiKeyMasked: string;
-  triggerSecretMasked: string;
-  clickhousePasswordSet: boolean;
   updatedAt: string | null;
 };
 
@@ -33,6 +34,79 @@ const PROVIDERS: Array<{ id: AiProvider; label: string; hint: string }> = [
     hint: "OpenAI-compatible base URL",
   },
 ];
+
+/**
+ * Unified setup field: label is plain text; the value lives in the input.
+ * A saved value shows masked (first3…last3) until Reveal toggles it. The reveal
+ * button always sits beside the input and is disabled (grayed) when there is
+ * nothing saved to reveal. Typing replaces the saved value on save.
+ */
+function SetupField({
+  label,
+  value,
+  onChange,
+  savedValue,
+  placeholder,
+  secret = false,
+  autoComplete = "off",
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  /** Currently-saved value ("" when unset). Shown masked; revealed on demand. */
+  savedValue: string;
+  placeholder?: string;
+  /** Render bullets when masked (true secrets). Non-secrets show masked text. */
+  secret?: boolean;
+  autoComplete?: string;
+}) {
+  const [shown, setShown] = useState(false);
+  const editing = value !== "";
+  const hasSaved = savedValue !== "";
+
+  // What the input displays when the user hasn't typed a replacement.
+  const display = editing
+    ? value
+    : hasSaved
+      ? shown
+        ? savedValue
+        : secret
+          ? "•".repeat(Math.min(savedValue.length, 24))
+          : maskForDisplay(savedValue)
+      : "";
+
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <span className="secret-field">
+        <input
+          type={secret && !shown ? "password" : "text"}
+          autoComplete={autoComplete}
+          placeholder={placeholder}
+          value={display}
+          readOnly={!editing && hasSaved}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        <button
+          type="button"
+          className="secret-field__toggle"
+          onClick={() => setShown((v) => !v)}
+          aria-pressed={shown}
+          aria-label={shown ? `Hide ${label}` : `Reveal ${label}`}
+          title={shown ? `Hide ${label}` : `Reveal ${label}`}
+          disabled={!hasSaved && !editing}
+        >
+          {shown ? "Hide" : "Reveal"}
+        </button>
+      </span>
+    </label>
+  );
+}
+
+function maskForDisplay(value: string): string {
+  if (value.length < 10) return `${value.slice(0, 2)}...`;
+  return `${value.slice(0, 3)}...${value.slice(-3)}`;
+}
 
 export function SetupForm() {
   const [loading, setLoading] = useState(true);
@@ -64,11 +138,9 @@ export function SetupForm() {
         }) => {
           if (cancelled) return;
           setPub(data.config);
-          setTriggerProjectRef(data.config.triggerProjectRef || "");
-          setClickhouseUser(data.config.clickhouseUser || "default");
-          setClickhouseDatabase(data.config.clickhouseDatabase || "default");
+          // Non-secret selects initialise from saved values; text fields stay
+          // blank and show the saved value masked until the user types a change.
           setAiProvider(data.config.aiProvider || "google");
-          setAiModel(data.config.aiModel || "gemini-flash-latest");
           setAiBaseUrl(data.config.aiBaseUrl || "http://127.0.0.1:1234/v1");
           setLoading(false);
         },
@@ -101,16 +173,18 @@ export function SetupForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          triggerSecretKey,
-          triggerProjectRef,
-          clickhouseUrl,
-          clickhouseUser,
-          clickhousePassword,
-          clickhouseDatabase,
-          orsApiKey,
+          // Blank fields mean "keep the saved value" (the API treats undefined
+          // as unchanged); only send what the user actually typed.
+          triggerSecretKey: triggerSecretKey || undefined,
+          triggerProjectRef: triggerProjectRef || undefined,
+          clickhouseUrl: clickhouseUrl || undefined,
+          clickhouseUser: clickhouseUser || undefined,
+          clickhousePassword: clickhousePassword || undefined,
+          clickhouseDatabase: clickhouseDatabase || undefined,
+          orsApiKey: orsApiKey || undefined,
           aiProvider,
-          aiApiKey,
-          aiModel,
+          aiApiKey: aiApiKey || undefined,
+          aiModel: aiModel || undefined,
           aiBaseUrl,
           bootstrap: true,
         }),
@@ -176,70 +250,52 @@ export function SetupForm() {
 
       <section className="setup-section">
         <h2>Trigger.dev</h2>
-        <label className="field">
-          <span>
-            Secret key{" "}
-            {pub?.triggerSecretMasked
-              ? `(saved ${pub.triggerSecretMasked})`
-              : ""}
-          </span>
-          <input
-            type="password"
-            autoComplete="off"
-            placeholder="tr_dev_…"
-            value={triggerSecretKey}
-            onChange={(e) => setTriggerSecretKey(e.target.value)}
-          />
-        </label>
-        <label className="field">
-          <span>Project ref</span>
-          <input
-            value={triggerProjectRef}
-            placeholder="proj_…"
-            onChange={(e) => setTriggerProjectRef(e.target.value)}
-          />
-        </label>
+        <SetupField
+          label="Secret key"
+          value={triggerSecretKey}
+          onChange={setTriggerSecretKey}
+          savedValue={pub?.triggerSecretKey ?? ""}
+          placeholder="tr_dev_…"
+          secret
+        />
+        <SetupField
+          label="Project ref"
+          value={triggerProjectRef}
+          onChange={setTriggerProjectRef}
+          savedValue={pub?.triggerProjectRef ?? ""}
+          placeholder="proj_…"
+        />
       </section>
 
       <section className="setup-section">
         <h2>ClickHouse</h2>
-        <label className="field">
-          <span>
-            URL{" "}
-            {pub?.clickhouseUrlHost ? `(saved ${pub.clickhouseUrlHost})` : ""}
-          </span>
-          <input
-            value={clickhouseUrl}
-            placeholder="https://xxx.clickhouse.cloud:8443"
-            onChange={(e) => setClickhouseUrl(e.target.value)}
-          />
-        </label>
-        <label className="field">
-          <span>User</span>
-          <input
-            value={clickhouseUser}
-            onChange={(e) => setClickhouseUser(e.target.value)}
-          />
-        </label>
-        <label className="field">
-          <span>
-            Password{" "}
-            {pub?.clickhousePasswordSet ? "(saved · leave blank to keep)" : ""}
-          </span>
-          <input
-            type="password"
-            autoComplete="off"
-            value={clickhousePassword}
-            onChange={(e) => setClickhousePassword(e.target.value)}
-          />
-        </label>
-        <label className="field">
-          <span>Database</span>
-          <input
-            value={clickhouseDatabase}
-            onChange={(e) => setClickhouseDatabase(e.target.value)}
-          />
-        </label>
+        <SetupField
+          label="URL"
+          value={clickhouseUrl}
+          onChange={setClickhouseUrl}
+          savedValue={pub?.clickhouseUrl ?? ""}
+          placeholder="https://xxx.clickhouse.cloud:8443"
+        />
+        <SetupField
+          label="User"
+          value={clickhouseUser}
+          onChange={setClickhouseUser}
+          savedValue={pub?.clickhouseUser ?? ""}
+        />
+        <SetupField
+          label="Password"
+          value={clickhousePassword}
+          onChange={setClickhousePassword}
+          savedValue={pub?.clickhousePasswordSet ? "••••••••" : ""}
+          placeholder={pub?.clickhousePasswordSet ? "saved · type to replace" : ""}
+          secret
+        />
+        <SetupField
+          label="Database"
+          value={clickhouseDatabase}
+          onChange={setClickhouseDatabase}
+          savedValue={pub?.clickhouseDatabase ?? ""}
+        />
       </section>
 
       <section className="setup-section">
@@ -256,30 +312,24 @@ export function SetupForm() {
             </button>
           ))}
         </div>
-        <label className="field">
-          <span>
-            API key{" "}
-            {pub?.aiApiKeyMasked ? `(saved ${pub.aiApiKeyMasked})` : ""}
-          </span>
-          <input
-            type="password"
-            autoComplete="off"
-            placeholder={
-              aiProvider === "openai-compatible"
-                ? "optional for local"
-                : "paste key"
-            }
-            value={aiApiKey}
-            onChange={(e) => setAiApiKey(e.target.value)}
-          />
-        </label>
-        <label className="field">
-          <span>Model id</span>
-          <input
-            value={aiModel}
-            onChange={(e) => setAiModel(e.target.value)}
-          />
-        </label>
+        <SetupField
+          label="API key"
+          value={aiApiKey}
+          onChange={setAiApiKey}
+          savedValue={pub?.aiApiKey ?? ""}
+          placeholder={
+            aiProvider === "openai-compatible"
+              ? "optional for local"
+              : "paste key"
+          }
+          secret
+        />
+        <SetupField
+          label="Model id"
+          value={aiModel}
+          onChange={setAiModel}
+          savedValue={pub?.aiModel ?? ""}
+        />
         {aiProvider === "openai-compatible" ? (
           <label className="field">
             <span>Base URL (LM Studio / Ollama)</span>
@@ -294,18 +344,14 @@ export function SetupForm() {
 
       <section className="setup-section">
         <h2>OpenRouteService (optional)</h2>
-        <label className="field">
-          <span>
-            API key{" "}
-            {pub?.orsConfigured ? "(saved · leave blank to keep)" : ""}
-          </span>
-          <input
-            type="password"
-            autoComplete="off"
-            value={orsApiKey}
-            onChange={(e) => setOrsApiKey(e.target.value)}
-          />
-        </label>
+        <SetupField
+          label="API key"
+          value={orsApiKey}
+          onChange={setOrsApiKey}
+          savedValue={pub?.orsApiKey ?? ""}
+          placeholder="paste key"
+          secret
+        />
       </section>
 
       {error ? (
