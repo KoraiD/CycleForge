@@ -37,15 +37,6 @@ export const ROAD_TYPE_META: Record<
   unpaved: { label: "Unpaved", color: "#9a5b3a", pattern: "dot" },
 };
 
-type OrsExtras = {
-  extras?: {
-    waytype?: {
-      values?: Array<[number, number, number]>;
-      summary?: Array<{ value: number; distance: number; amount: number }>;
-    };
-  };
-};
-
 const ORS_WAYTYPE_MAP: Record<number, RoadTypeKey> = {
   0: "unpaved", // Other
   1: "paved", // StateRoad
@@ -59,10 +50,9 @@ const ORS_WAYTYPE_MAP: Record<number, RoadTypeKey> = {
   9: "cycleway", // Ferry (kept simple)
 };
 
-/** Try to read ORS waytype extras off a route (they travel as extras on RawRoute→RouteCandidate when present). */
+/** Try to read ORS waytype extras off a route. Present only on genuine ORS routes. */
 export function mixFromOrs(route: RouteCandidate): RoadTypeMix | null {
-  const raw = route as unknown as OrsExtras;
-  const extras = raw.extras?.waytype;
+  const extras = route.extras?.waytype;
   if (!extras?.values?.length || !route.geometry.coordinates.length) return null;
   const totalKm = route.distanceM / 1000;
   if (totalKm <= 0) return null;
@@ -126,17 +116,35 @@ export function estimateRoadMix(route: RouteCandidate): RoadTypeMix {
   const acc = new Map<RoadTypeKey, number>();
   const segments: RoadSegment[] = [];
   let cursor = 0;
-  // Interleave into 3–7 stretches so the map strip looks like real sections.
+  // Interleave into stretches so the map strip looks like real sections.
   const stretchCount = 3 + Math.floor(rnd * 4);
   const pool: Array<[RoadTypeKey, number]> = raw.map(([t, v]) => [t, (Math.max(v, 0.01) / sum) * totalKm]);
   for (let s = 0; s < stretchCount; s++) {
     const remaining = pool.filter(([, km]) => km > 0.01);
     if (!remaining.length) break;
-    const [type, km] = remaining[s % remaining.length];
     const isLast = s === stretchCount - 1;
-    const take = isLast
-      ? totalKm - cursor
-      : Math.min(km, Math.max(totalKm / stretchCount, km * (0.4 + rnd * 0.4)));
+    if (isLast) {
+      // Distribute the leftover distance across every type's remaining share
+      // proportionally, instead of dumping it all on one arbitrary type.
+      const remTotal = remaining.reduce((t, [, km]) => t + km, 0);
+      const leftover = totalKm - cursor;
+      if (leftover <= 0.01) break;
+      let distributed = 0;
+      remaining.forEach(([type, km], idx) => {
+        const isFinal = idx === remaining.length - 1;
+        const take = isFinal
+          ? leftover - distributed
+          : Math.min(km, (km / remTotal) * leftover);
+        if (take <= 0.005) return;
+        segments.push({ type, fromKm: cursor, toKm: cursor + take });
+        acc.set(type, (acc.get(type) ?? 0) + take);
+        cursor += take;
+        distributed += take;
+      });
+      break;
+    }
+    const [type, km] = remaining[s % remaining.length];
+    const take = Math.min(km, Math.max(totalKm / stretchCount, km * (0.4 + rnd * 0.4)));
     if (take <= 0.01) continue;
     segments.push({ type, fromKm: cursor, toKm: cursor + take });
     acc.set(type, (acc.get(type) ?? 0) + take);
