@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { NearbyStart } from "@/lib/nearby-starts";
 import type { GeocodeHit } from "@/lib/geocode";
 import type { Intensity, TerrainBias, WizardState } from "@/lib/types";
+import { DurationField } from "./duration-field";
 import { INTENSITY_META, TERRAIN_META } from "./icon";
 import { StartPickerMap } from "./start-picker-map";
 
@@ -150,18 +151,11 @@ export function Wizard({
         ) : null}
       </header>
 
-      <label className="field">
-        <span>Duration (min)</span>
-        <input
-          type="range"
-          min={45}
-          max={210}
-          step={15}
-          value={wizard.durationMin}
-          onChange={(e) => onChange({ durationMin: Number(e.target.value) })}
-        />
-        <strong>{wizard.durationMin} min</strong>
-      </label>
+      <DurationField
+        durationMin={wizard.durationMin}
+        intensity={wizard.intensity}
+        onChange={(durationMin) => onChange({ durationMin })}
+      />
 
       <label className="field">
         <span>FTP (watts) — optional, improves TSS</span>

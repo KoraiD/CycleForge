@@ -18,6 +18,7 @@ import { INTENSITY_META, TERRAIN_META } from "./icon";
 import { RouteMiniMap } from "./route-mini-map";
 import { RoadTypeStrip } from "./road-type-strip";
 import { HistoryChart } from "./history-chart";
+import { DurationField } from "./duration-field";
 import { RouteMap } from "./route-map";
 import { RouteRadar } from "./route-radar";
 import { ScoreChart } from "./score-chart";
@@ -209,19 +210,12 @@ export function PlanPanel({
           <p className="eyebrow">Tune this result</p>
         </div>
 
-        <label className="field">
-          <span>Duration (min)</span>
-          <input
-            type="range"
-            min={45}
-            max={210}
-            step={15}
-            value={draftDuration}
-            disabled={panelBusy}
-            onChange={(e) => setDraftDuration(Number(e.target.value))}
-          />
-          <strong>{draftDuration} min</strong>
-        </label>
+        <DurationField
+          durationMin={draftDuration}
+          intensity={draftIntensity}
+          disabled={panelBusy}
+          onChange={setDraftDuration}
+        />
 
         <div className="chip-row chip-row--visual">
           <span className="chip-label">Intensity</span>

@@ -355,6 +355,8 @@ export function Chat() {
     !wizardDirty && extracted.wizard ? extracted.wizard : localWizard;
 
   const busy = localBusy || selectingRoute;
+  /** Any async render/work in flight — drives the persistent in-app indicator. */
+  const rendering = localBusy || selectingRoute || agentBusy;
   const agentTransportError = error
     ? friendlyErrorMessage(
         error,
@@ -686,6 +688,17 @@ Call upsert_wizard_state with these fields, then generate_route_candidates with 
             <p className="tagline">Visual training plans — not walls of text</p>
           </div>
           <nav className="chat-nav" aria-label="App">
+            {rendering ? (
+              <span
+                className="render-indicator"
+                role="status"
+                aria-live="polite"
+                title="CycleForge is rendering your plan"
+              >
+                <span className="render-indicator__spinner" aria-hidden />
+                <span className="render-indicator__label">Rendering…</span>
+              </span>
+            ) : null}
             <button
               type="button"
               className="ghost chat-nav__btn"

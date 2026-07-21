@@ -1,20 +1,13 @@
+import { speedKmhFor } from "./duration";
 import type { RouteScore, WeatherSnapshot, WizardState } from "./types";
 
 function clamp01(n: number) {
   return Math.max(0, Math.min(1, n));
 }
 
-/** Target distance from duration assuming ~22–28 km/h by intensity. */
+/** Target distance from duration assuming ~20–27 km/h by intensity. */
 export function targetDistanceM(wizard: WizardState): number {
-  const speedKmh =
-    wizard.intensity === "easy"
-      ? 20
-      : wizard.intensity === "endurance"
-        ? 24
-        : wizard.intensity === "tempo"
-          ? 27
-          : 23;
-  return (wizard.durationMin / 60) * speedKmh * 1000;
+  return (wizard.durationMin / 60) * speedKmhFor(wizard.intensity) * 1000;
 }
 
 export function targetElevGainM(wizard: WizardState): number {

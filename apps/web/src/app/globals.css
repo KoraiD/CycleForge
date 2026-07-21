@@ -558,6 +558,81 @@ body {
   accent-color: var(--accent);
 }
 
+/* Duration field with min ↔ km unit toggle */
+.duration-field {
+  gap: 0.4rem;
+}
+
+.duration-field__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.duration-field__head > span:first-child {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.duration-field__toggle {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.duration-field__toggle button {
+  border: 0;
+  background: transparent;
+  padding: 0.22rem 0.7rem;
+  font-size: 0.74rem;
+  cursor: pointer;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.duration-field__toggle button.active {
+  background: var(--ink);
+  color: #f7faf7;
+}
+
+.duration-field__slider {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.duration-field__slider strong {
+  font-family: var(--font-display);
+  white-space: nowrap;
+}
+
+.duration-field__hint {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+/* Keep buttons from stretching weirdly wide on ultra-wide screens. */
+.primary,
+.ghost {
+  width: fit-content;
+  max-width: 22rem;
+}
+
+.wizard .primary,
+.tweak-apply,
+.setup-actions .primary {
+  justify-self: start;
+}
+
+.composer .primary {
+  max-width: none;
+}
+
 .chip-row {
   display: flex;
   flex-wrap: wrap;
@@ -1378,16 +1453,24 @@ a.primary {
 }
 
 .route-print-map__bg {
-  fill: #f4f7f2;
+  fill: #eef1ea;
   stroke: #d4dcd2;
   stroke-width: 1;
 }
 
 .route-print-map__line {
   fill: none;
-  stroke-width: 4.5;
+  stroke-width: 5;
   stroke-linecap: round;
   stroke-linejoin: round;
+  paint-order: stroke;
+  stroke-opacity: 0.95;
+}
+
+.route-print-map__attrib {
+  fill: #6b7568;
+  font-size: 8px;
+  font-family: var(--font-body, sans-serif);
 }
 
 .route-print-map__dot--start {
@@ -1577,6 +1660,11 @@ a.ghost {
   /* The hourly scrubber is a range input — useless on paper. Show the strip
      but drop the slider control. */
   .commute-verdict__scrub {
+    display: none;
+  }
+
+  /* Collapsed score-explain toggle is an interactive pill — hide on paper. */
+  .score-explain__toggle {
     display: none;
   }
 
@@ -1798,6 +1886,35 @@ a.ghost {
   text-decoration: none;
   white-space: nowrap;
   flex: 0 0 auto;
+}
+
+/* Persistent in-app "working" indicator — visible regardless of the Next
+   dev-tools button (which is dev-only and now hidden for recording). */
+.render-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.32rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, white);
+  font-size: 0.74rem;
+  color: var(--accent);
+  flex: 0 0 auto;
+}
+
+.render-indicator__spinner {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 25%, var(--line));
+  border-top-color: var(--accent);
+  animation: spin 0.7s linear infinite;
+}
+
+.render-indicator__label {
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .stack-page {

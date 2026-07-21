@@ -27,8 +27,15 @@ export function RoadTypeStrip({
     <section className="roadmix" aria-label="Road types on route">
       <header className="roadmix__head">
         <p className="eyebrow">Road types</p>
-        <span className="roadmix__source">
-          {mix.source === "ors" ? "from OpenRouteService way types" : "estimated mix"}
+        <span
+          className="roadmix__source"
+          title={
+            mix.source === "ors"
+              ? "Surface types from OpenRouteService way-type data"
+              : "OpenRouteService surface data unavailable for this route — showing a typical local mix"
+          }
+        >
+          {mix.source === "ors" ? "from OpenRouteService way types" : "estimated mix · typical for area"}
         </span>
       </header>
 

@@ -120,6 +120,7 @@ export function ElevationChart({
             tickFormatter={(v) => `${v} km`}
             axisLine={false}
             tickLine={false}
+            minTickGap={28}
           />
           <YAxis
             dataKey="elevM"

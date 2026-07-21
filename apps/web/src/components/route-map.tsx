@@ -144,6 +144,20 @@ export function RouteMap({
     map.fitBounds(bounds, { padding: 56, duration: 450, maxZoom: 13 });
   }, [routes]);
 
+  /** Fit the selected route specifically — the Fit button's visible action. */
+  const fitSelected = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !selected) return;
+    const coords = selected.geometry.coordinates;
+    if (!coords.length) return;
+    const first = coords[0] as [number, number];
+    const bounds = coords.reduce(
+      (b, c) => b.extend(c as [number, number]),
+      new LngLatBounds(first, first),
+    );
+    map.fitBounds(bounds, { padding: 64, duration: 550, maxZoom: 14 });
+  }, [selected]);
+
   // Refit when regenerate swaps geometry (e.g. Amsterdam → Budapest).
   useEffect(() => {
     const t = window.setTimeout(() => fitAll(), 50);
@@ -416,8 +430,8 @@ export function RouteMap({
         <button
           type="button"
           className="map-fit-btn"
-          onClick={fitAll}
-          title="Fit all routes"
+          onClick={fitSelected}
+          title="Zoom to fit the selected route"
         >
           Fit
         </button>
