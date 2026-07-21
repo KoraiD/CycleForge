@@ -55,7 +55,7 @@ async function nominatimJson<T>(url: string): Promise<T | null> {
       {
         headers: {
           Accept: "application/json",
-          "User-Agent": "CycleForge/1.0 (hackathon; nearby starts)",
+          "User-Agent": "CycleForge/1.0 (open-source cycling planner; nearby starts)",
         },
         cache: "no-store",
       },

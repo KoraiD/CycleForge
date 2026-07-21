@@ -42,7 +42,7 @@ export function StackView({ stats: initial }: { stats: StackStats }) {
 
   return (
     <main className="stack-sheet">
-      <p className="eyebrow">Hackathon stack</p>
+      <p className="eyebrow">Under the hood</p>
       <h1 className="stack-title">Trigger.dev × ClickHouse</h1>
       <p className="stack-lede">
         Durable Trigger tasks fan out ORS and weather ingest; ClickHouse stores
@@ -250,8 +250,8 @@ export function StackView({ stats: initial }: { stats: StackStats }) {
           </p>
         ) : (
           <ul className="stack-list stack-summaries">
-            {stats.samples.summaryUrls.map((s) => (
-              <li key={s.sessionId}>
+            {stats.samples.summaryUrls.map((s, i) => (
+              <li key={`${s.sessionId}-${i}`}>
                 <a
                   href={`/summary/${s.sessionId}`}
                   target="_blank"

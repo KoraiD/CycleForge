@@ -13,7 +13,7 @@ export const stackHeartbeatSchedule = schedules.task({
     return {
       ok: true as const,
       at,
-      message: "Stack heartbeat — weather cron sibling for demo/judging",
+      message: "Stack heartbeat — weather cron sibling for the live demo",
     };
   },
 });

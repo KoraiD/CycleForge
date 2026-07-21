@@ -42,8 +42,8 @@ const CONFIG_PATH = join(CONFIG_DIR, "runtime-config.json");
 
 export function maskSecret(value: string): string {
   if (!value) return "";
-  if (value.length <= 8) return "••••";
-  return `${value.slice(0, 3)}…${value.slice(-4)}`;
+  if (value.length < 10) return `${value.slice(0, 2)}...`;
+  return `${value.slice(0, 3)}...${value.slice(-3)}`;
 }
 
 export function readRuntimeConfig(): RuntimeConfig {
@@ -200,30 +200,23 @@ function syncEnvLocal(config: RuntimeConfig): void {
 export function publicRuntimeConfig(config = readRuntimeConfig()) {
   return {
     triggerConfigured: Boolean(config.triggerSecretKey),
+    triggerSecretKey: config.triggerSecretKey,
     triggerProjectRef: config.triggerProjectRef,
-    triggerProjectRefMasked: maskSecret(config.triggerProjectRef),
     clickhouseConfigured: Boolean(config.clickhouseUrl),
-    clickhouseUrlHost: config.clickhouseUrl
-      ? config.clickhouseUrl.replace(/^https?:\/\//, "").split("/")[0]
-      : "",
-    clickhouseUrlMasked: maskSecret(config.clickhouseUrl),
+    clickhouseUrl: config.clickhouseUrl,
     clickhouseUser: config.clickhouseUser,
-    clickhouseUserMasked: maskSecret(config.clickhouseUser),
+    clickhousePasswordSet: Boolean(config.clickhousePassword),
     clickhouseDatabase: config.clickhouseDatabase,
-    clickhouseDatabaseMasked: maskSecret(config.clickhouseDatabase),
     orsConfigured: Boolean(config.orsApiKey),
-    orsApiKeyMasked: maskSecret(config.orsApiKey),
+    orsApiKey: config.orsApiKey,
     aiProvider: config.aiProvider,
     aiModel: config.aiModel,
-    aiModelMasked: maskSecret(config.aiModel),
+    aiApiKey: config.aiApiKey,
     aiBaseUrl: config.aiBaseUrl,
     aiConfigured: Boolean(
       config.aiApiKey ||
         (config.aiProvider === "openai-compatible" && config.aiBaseUrl),
     ),
-    aiApiKeyMasked: maskSecret(config.aiApiKey),
-    triggerSecretMasked: maskSecret(config.triggerSecretKey),
-    clickhousePasswordSet: Boolean(config.clickhousePassword),
     updatedAt: config.updatedAt ?? null,
   };
 }

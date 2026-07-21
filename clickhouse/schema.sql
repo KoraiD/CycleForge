@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS route_scores (
 ORDER BY (session_id, total, route_id);
 
 -- Recompute ranking in SQL (same weights as apps/web/src/lib/scoring.ts).
--- Demo this in ClickHouse console for the judging video.
+-- Demo this in the ClickHouse console during a live demo.
 CREATE VIEW IF NOT EXISTS route_scores_ranked AS
 SELECT
   route_id,

@@ -108,6 +108,8 @@ lerna-debug.log*
 # Participant PDFs and local notes stay off the remote (do not publish briefs)
 *.pdf
 docs/private/
+docs/SUBMIT.md
+docs/IMPLEMENTATION.md
 tmp/
 temp/
 .scratch/

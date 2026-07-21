@@ -66,7 +66,7 @@ apps/web/src/components/ React UI (map, charts, plan panel, wizard, verdict)
 apps/web/src/app/        routes, server actions, API routes
 apps/web/src/trigger/    Trigger.dev tasks (agent, ORS fan-out, scoring, ingest)
 clickhouse/              schema + seed SQL
-docs/                    RUN (technical), SUBMIT (hackathon), IMPLEMENTATION
+docs/                    RUN.md (technical runbook)
 ```
 
 ## Reporting bugs & requesting features

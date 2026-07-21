@@ -58,7 +58,7 @@ with **no keys at all**.
 
 ---
 
-## Try the demo (what judges / visitors should see)
+## Try the demo
 
 Use this prompt (or click **Try the demo prompt** in the UI):
 
@@ -139,21 +139,24 @@ npm run dev
 Secrets never leave your machine unless you put them in your own Trigger/ClickHouse projects. Do not commit `.env.local` or `.data/`.
 
 Full technical runbook (queries, health checks, CI): **[docs/RUN.md](docs/RUN.md)**.  
-Submit / video / scrub checklist: **[docs/SUBMIT.md](docs/SUBMIT.md)**.  
 Security notes: **[SECURITY.md](SECURITY.md)**.
 
 ---
 
-## Why this fits the hackathon
+## Why it's built this way
 
-| Rubric | How CycleForge answers |
+CycleForge was designed around a few principles — visual-first answers, durable
+background work, and analytics you can query. They map directly to what the
+hackathon rewards, which is why it scores well there:
+
+| Principle | How CycleForge delivers |
 | --- | --- |
-| **ClickHouse & Trigger.dev (25%)** | Durable `chat.agent` + ORS fan-out + scoring; CH stores routes/scores, weather pipeline, SQL ranking, athlete history |
-| **Problem fit (20%)** | The response *is* the product: wizard, map, charts, coach note — prose is secondary |
-| **Technical implementation (20%)** | Next.js, AI SDK tools, parallel tasks, typed plan payload, fallbacks |
-| **Innovation (20%)** | Training effect + SQL scoring + in-plan refine loop + weather/load visuals |
-| **Scalability & impact (10%)** | Session/route tables + seed corpus; BYOK so others can host |
-| **Presentation (5%)** | Clear demo path above + ≤5 min script in SUBMIT |
+| **Deep ClickHouse & Trigger.dev use** | Durable `chat.agent` + ORS fan-out + scoring; CH stores routes/scores, weather pipeline, SQL ranking, athlete history |
+| **Problem fit** | The response *is* the product: wizard, map, charts, coach note — prose is secondary |
+| **Technical implementation** | Next.js, AI SDK tools, parallel tasks, typed plan payload, fallbacks |
+| **Innovation** | Training effect + SQL scoring + in-plan refine loop + weather/load visuals |
+| **Scalability & impact** | Session/route tables + seed corpus; BYOK so others can host |
+| **Presentation** | Clear demo path above; the product walks itself through |
 
 ### Tech stack
 
@@ -209,8 +212,6 @@ Security notes: **[SECURITY.md](SECURITY.md)**.
 | Doc | Use when |
 | --- | --- |
 | [docs/RUN.md](docs/RUN.md) | Health checks, seed, SQL for demos, CI |
-| [docs/SUBMIT.md](docs/SUBMIT.md) | Video script, form paste, public-repo scrub |
-| [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md) | Full build plan / backlog |
 | [apps/web/.env.example](apps/web/.env.example) | Manual env template (Setup UI preferred) |
 | [clickhouse/schema.sql](clickhouse/schema.sql) | Tables + ranking view |
 
@@ -242,9 +243,7 @@ report it privately via a GitHub security advisory rather than a public issue.
 ├── SECURITY.md               ← secrets / public-repo rules
 ├── LICENSE                   ← MIT
 ├── docs/
-│   ├── RUN.md                ← technical local run + queries
-│   ├── SUBMIT.md             ← video script, form copy, scrub checklist
-│   └── IMPLEMENTATION.md     ← build plan / backlog (hackathon working doc)
+│   └── RUN.md                ← technical local run + queries
 ├── clickhouse/               ← schema + seed SQL
 └── apps/web/                 ← Next.js UI + Trigger tasks
 ```
