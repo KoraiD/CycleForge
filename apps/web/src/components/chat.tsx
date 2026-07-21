@@ -519,22 +519,6 @@ Call upsert_wizard_state with these fields, then generate_route_candidates with 
     );
   };
 
-  const onRefine = (kind: "shorter" | "hillier" | "easier") => {
-    const patch: Partial<WizardState> =
-      kind === "shorter"
-        ? { durationMin: Math.max(30, wizard.durationMin - 20) }
-        : kind === "hillier"
-          ? { terrainBias: "hilly", intensity: "hills" }
-          : { intensity: "easy", terrainBias: "flat" };
-    const prompt =
-      kind === "shorter"
-        ? "Make it shorter — about 20 minutes less."
-        : kind === "hillier"
-          ? "Make it hillier — more climbing."
-          : "Make it easier — flatter and recovery pace.";
-    regenerateWithPatch(patch, prompt);
-  };
-
   const onApplyTweaks = (tweak: PlanTweak) => {
     const { preset: _preset, ...patch } = tweak;
     regenerateWithPatch(
@@ -916,7 +900,6 @@ Call upsert_wizard_state with these fields, then generate_route_candidates with 
               key={`${plan.sessionId}-${plan.routes.map((r) => r.routeId).join("-")}-${plan.historyContext?.athleteId ?? "none"}`}
               plan={plan}
               onSelectRoute={onSelectRoute}
-              onRefine={onRefine}
               onApplyTweaks={onApplyTweaks}
               refining={false}
               selectingRoute={selectingRoute}

@@ -46,7 +46,6 @@ export type PlanTweak = Partial<
 export function PlanPanel({
   plan,
   onSelectRoute,
-  onRefine,
   onApplyTweaks,
   refining,
   selectingRoute,
@@ -57,7 +56,6 @@ export function PlanPanel({
 }: {
   plan: PlanPayload;
   onSelectRoute?: (routeId: string) => void;
-  onRefine?: (kind: "shorter" | "hillier" | "easier") => void;
   onApplyTweaks?: (tweak: PlanTweak) => void;
   refining?: boolean;
   selectingRoute?: boolean;
@@ -209,34 +207,6 @@ export function PlanPanel({
       <div className="tweak-panel">
         <div className="tweak-panel__head">
           <p className="eyebrow">Tune this result</p>
-          {onRefine && (
-            <div className="refine-chips" aria-label="Quick refine">
-              <button
-                type="button"
-                className="chip"
-                disabled={panelBusy}
-                onClick={() => onRefine("shorter")}
-              >
-                Shorter
-              </button>
-              <button
-                type="button"
-                className="chip"
-                disabled={panelBusy}
-                onClick={() => onRefine("hillier")}
-              >
-                Hillier
-              </button>
-              <button
-                type="button"
-                className="chip"
-                disabled={panelBusy}
-                onClick={() => onRefine("easier")}
-              >
-                Easier
-              </button>
-            </div>
-          )}
         </div>
 
         <label className="field">
