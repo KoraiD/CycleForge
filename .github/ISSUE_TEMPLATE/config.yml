@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security issue
+    url: https://github.com/KoraiD/CycleForge/security/advisories/new
+    about: Report a leaked secret or vulnerability privately. Do NOT open a public issue with sensitive details.
+  - name: Hackathon / usage question
+    url: https://github.com/KoraiD/CycleForge/discussions
+    about: Ask questions and share ideas with the community.
